@@ -1,0 +1,144 @@
+// api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUMS ───────────────────────────────────────────────
+enum UserStatus {
+  active
+  suspended
+}
+
+enum EventStatus {
+  draft
+  published
+  closed
+  archived
+}
+
+enum GuestStatus {
+  pending
+  approved
+  rejected
+  attended
+  cancelled
+}
+
+// ── MODELS ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid()) @map("id")
+  email         String    @unique @map("email")
+  phone         String?   @unique @map("phone")
+  passwordHash  String    @map("password_hash")
+  status        UserStatus @default(active) @map("status")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  profile       Profile?
+  hostedEvents  Event[]   @relation("EventHost")
+  joinedEvents  EventGuest[]
+  followers     Subscription[] @relation("Follower")
+  following     Subscription[] @relation("Following")
+  ratingsGiven  Rating[]  @relation("Rater")
+  ratingsReceived Rating[] @relation("Rated")
+
+  @@map("users")
+  @@index([email])
+  @@index([status])
+}
+
+model Profile {
+  userId      String  @id @map("user_id")
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nickname    String  @unique @map("nickname")
+  bio         String? @map("bio")
+  avatarUrl   String? @map("avatar_url")
+  district    String? @map("district")
+  trustScore  Float   @default(0) @map("trust_score")
+  isVerified  Boolean @default(false) @map("is_verified")
+
+  @@map("profiles")
+  @@index([nickname])
+  @@index([district])
+}
+
+model Event {
+  id          String      @id @default(uuid()) @map("id")
+  hostId      String      @map("host_id")
+  host        User        @relation("EventHost", fields: [hostId], references: [id], onDelete: Cascade)
+  title       String      @map("title")
+  description String?     @map("description")
+  theme       String?     @map("theme")
+  startsAt    DateTime    @map("starts_at")
+  endsAt      DateTime?   @map("ends_at")
+  maxGuests   Int?        @map("max_guests")
+  status      EventStatus @default(draft) @map("status")
+  rules       Json?       @map("rules")
+  lat         Float?      @map("lat")
+  lng         Float?      @map("lng")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  guests      EventGuest[]
+  ratings     Rating[]
+
+  @@map("events")
+  @@index([hostId])
+  @@index([status, startsAt])
+  @@index([lat, lng])
+}
+
+model EventGuest {
+  id        String     @id @default(uuid()) @map("id")
+  eventId   String     @map("event_id")
+  userId    String     @map("user_id")
+  status    GuestStatus @default(pending) @map("status")
+  joinedAt  DateTime   @default(now()) @map("joined_at")
+
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("event_guests")
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+  @@index([userId, status])
+}
+
+model Subscription {
+  id          String   @id @default(uuid()) @map("id")
+  followerId  String   @map("follower_id")
+  followingId String   @map("following_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model Rating {
+  id        String   @id @default(uuid()) @map("id")
+  eventId   String   @map("event_id")
+  raterId   String   @map("rater_id")
+  ratedId   String   @map("rated_id")
+  score     Int      @map("score") // 1-5
+  comment   String?  @map("comment")
+createdAt DateTime @default(now()) @map("created_at")
+
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  rater     User     @relation("Rater", fields: [raterId], references: [id], onDelete: Cascade)
+  rated     User     @relation("Rated", fields: [ratedId], references: [id], onDelete: Cascade)
+
+  @@map("ratings")
+  @@index([eventId])
+  @@index([ratedId, createdAt])
+  @@index([raterId, eventId], name: "idx_rating_unique")
+}

@@ -1,0 +1,25 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Устанавливаем системные зависимости для Prisma + dev-инструменты
+RUN apk add --no-cache openssl postgresql-client
+
+# Копируем package*.json для кэширования слоя
+COPY package*.json ./
+
+# Устанавливаем зависимости (гибкий режим для dev)
+# npm install обновит node_modules даже если package-lock.json устарел
+RUN npm install
+
+# Копируем остальной код (остальное монтируется через volume)
+COPY . .
+
+# Генерируем Prisma Client (нужно для работы в контейнере)
+RUN npx prisma@6 generate
+
+# Порт по умолчанию
+EXPOSE 4000
+
+# Hot-reload через tsx watch
+CMD ["npm", "run", "dev"]

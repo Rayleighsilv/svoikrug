@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Копируем package*.json для кэширования
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm ci
+
+# Копируем остальной код
+COPY . .
+
+# Порт Next.js
+EXPOSE 3000
+
+# Dev-режим с hot-reload
+CMD ["npm", "run", "dev"]
