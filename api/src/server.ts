@@ -27,16 +27,7 @@ const adapter = new PrismaPg({
 // Передаём адаптер в PrismaClient
 const prisma = new PrismaClient({ adapter })
 
-// 🔹 Health check + проверка подключения к БД
-server.get('/health', async () => {
-  try {
-    await prisma.$queryRaw`SELECT 1`
-    return { status: 'ok', database: 'connected' }
-  } catch (err) {
-    server.log.error('DB connection failed:', err)
-    return { status: 'error', database: 'disconnected' }
-  }
-})
+
 
 // 🔹 Создать тестового пользователя — ОБНОВЛЕНО под новую схему
 server.post('/debug/create-user', async (request, reply) => {
@@ -187,7 +178,8 @@ const start = async () => {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     })
-    await server.register(fastifyCookie, { secret: process.env.JWT_SECRET })
+
+    await server.register(fastifyCookie, { secret: process.env.JWT_SECRET || 'temp_secret' })
 
     // 🔹 Инициализируем сервис и хендлер модуля events
     const eventService = new EventService(prisma)
