@@ -36,13 +36,14 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       email: newUser.email,
       nickname: newUser.nickname || undefined,
-      phone: undefined,
+    }
+    if (newUser.rating) {
+      payload.trustScore = Number(newUser.rating)
     }
 
-    // Если рейтинг указан — передаём trustScore напрямую (опционально)
     try {
       const response = await fetch('http://localhost:4000/debug/create-user', {
         method: 'POST',

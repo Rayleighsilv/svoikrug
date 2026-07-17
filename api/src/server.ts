@@ -36,6 +36,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   nickname: z.string().min(1).max(50).optional(),
   phone: z.string().optional(),
+  trustScore: z.number().min(0).max(1000).optional(),
 })
 
 const deleteUserParamsSchema = z.object({
@@ -123,7 +124,7 @@ const start = async () => {
           details: parsed.error.issues,
         })
       }
-      const { email, nickname, phone } = parsed.data
+      const { email, nickname, phone, trustScore } = parsed.data
 
       try {
         const user = await prisma.user.create({
@@ -134,7 +135,7 @@ const start = async () => {
             profile: {
               create: {
                 nickname: nickname || `user_${Date.now()}`,
-                trustScore: 100,
+                trustScore: trustScore ?? 100,
               },
             },
           },
