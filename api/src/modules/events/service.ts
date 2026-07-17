@@ -1,17 +1,19 @@
-// api/src/modules/events/service.ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, EventStatus } from '@prisma/client'
 import { CreateEventInput, UpdateEventInput } from './schema'
+
+const VALID_EVENT_STATUSES: readonly EventStatus[] = ['draft', 'published', 'closed', 'archived'] as const
 
 export class EventService {
   constructor(private prisma: PrismaClient) {}
 
   async createEvent(hostId: string, data: CreateEventInput) {
+    // Zod уже гарантирует валидность данных на входе
     return this.prisma.event.create({
       data: {
         ...data,
         hostId,
-        status: 'draft', // новое событие всегда черновик
-      },
+        status: 'draft' as EventStatus,
+      } as any,
       include: { host: { select: { email: true, profile: true } } },
     })
   }
@@ -28,12 +30,16 @@ export class EventService {
 
   async listEvents(filters?: { status?: string; district?: string; limit?: number }) {
     const { status, district, limit = 20 } = filters || {}
-    
+
+    // Валидация статуса: только допустимые значения передаются в Prisma
+    const safeStatus = status && (VALID_EVENT_STATUSES as readonly string[]).includes(status)
+      ? (status as EventStatus)
+      : undefined
+
     return this.prisma.event.findMany({
       where: {
         AND: [
-          status ? { status: status as any } : {},
-          // district фильтруем через связанный Profile хоста
+          safeStatus ? { status: safeStatus } : {},
           district ? { host: { profile: { district } } } : {},
         ],
       },
@@ -55,7 +61,7 @@ export class EventService {
 
     return this.prisma.event.update({
       where: { id },
-      data,
+      data: data as any,
       include: { host: { select: { email: true } } },
     })
   }

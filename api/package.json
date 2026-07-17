@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
+    "@fastify/formbody": "^8.0.2",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "dotenv": "^17.4.2",

@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "bundler",  // 🔹 Современная замена "node"
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
@@ -10,7 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "ignoreDeprecations": "6.0",    // 🔹 Отключаем предупреждения о устаревании
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,

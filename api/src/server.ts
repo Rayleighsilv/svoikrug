@@ -1,10 +1,9 @@
-// 🔹 Добавь эти импорты в начало файла
 import fastifyCors from '@fastify/cors'
 import fastifyCookie from '@fastify/cookie'
-import { ZodError } from 'zod'
+import fastifyFormbody from '@fastify/formbody'
+import { z, ZodError } from 'zod'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
-// Импорты нашего модуля events
 import { EventService } from './modules/events/service'
 import { EventHandler } from './modules/events/handler'
 
@@ -15,124 +14,52 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-
 const server = Fastify({ logger: true })
 
+// Проверяем, что DATABASE_URL задан перед созданием адаптера
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is not set in environment')
+  process.exit(1)
+}
 
 // Создаём адаптер для прямого подключения к PostgreSQL
+// Примечание: prisma.config.ts создаёт свой экземпляр адаптера для CLI-команд (migrate, generate)
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL!
+  connectionString: process.env.DATABASE_URL,
 })
 
-// Передаём адаптер в PrismaClient
 const prisma = new PrismaClient({ adapter })
 
+// ─── Zod-схемы для debug-роутов ───────────────────────────────
 
-
-// 🔹 Создать тестового пользователя — ОБНОВЛЕНО под новую схему
-server.post('/debug/create-user', async (request, reply) => {
-  const body = request.body as { 
-    email: string
-    nickname?: string  // ← было name, стало nickname
-    phone?: string
-  }
-  const { email, nickname, phone } = body
-
-  try {
-    // Создаём пользователя + профиль в одной транзакции
-    const user = await prisma.user.create({
-      data: {
-        email,
-        phone: phone || null,
-        passwordHash: 'temp_hash_for_debug', // ⚠️ Только для отладки!
-        profile: {
-          create: {
-            nickname: nickname || `user_${Date.now()}`,
-            trustScore: 100,
-          },
-        },
-      },
-      include: {
-        profile: true,
-      },
-    })
-    return { success: true, user }
-  } catch (err) {
-    server.log.error('Create user failed:', err)
-    return reply.code(400).send({ 
-      success: false, 
-      error: 'User already exists or invalid data' 
-    })
-  }
+const createUserSchema = z.object({
+  email: z.string().email(),
+  nickname: z.string().min(1).max(50).optional(),
+  phone: z.string().optional(),
 })
 
-
-// 🔹 Получить всех пользователей (для отладки) — ОБНОВЛЕНО под новую схему
-server.get('/debug/users', async () => {
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      email: true,
-      status: true,
-      createdAt: true,
-      // Подтягиваем профиль, чтобы показать nickname
-      profile: {
-        select: {
-          nickname: true,
-          trustScore: true,
-          isVerified: true,
-        },
-      },
-    },
-  })
-  return { users }
+const deleteUserParamsSchema = z.object({
+  id: z.string().uuid('Invalid user ID format'),
 })
 
+// ─── Глобальный error handler ─────────────────────────────────
 
-// 🔹 Старый маршрут (для совместимости)
-server.get('/', async () => {
-  return { message: 'SvoiKrug API работает! 🚀', status: 'ok' }
-})
-
-
-// 🔹 Удалить пользователя по ID
-server.delete('/debug/users/:id', async (request, reply) => {
-  const { id } = request.params as { id: string }
-
-  try {
-    await prisma.user.delete({ where: { id } })
-    return { success: true, message: 'User deleted' }
-  } catch (err) {
-    server.log.error('Delete user failed:', err)
-    return reply.code(400).send({ success: false, error: 'User not found or already deleted' })
-  }
-})
-
-
-// 🔹 Запуск сервера
-const PORT = Number(process.env.PORT) || 4000
-
-
-
-// 🔹 Глобальный error handler — типобезопасная версия
-server.setErrorHandler((error, request, reply) => {
-  // ✅ Правильный лог для Fastify: объект ошибки + сообщение
+server.setErrorHandler((error, _request, reply) => {
   server.log.error({ err: error }, 'Unhandled error')
 
-  // Zod валидация
   if (error instanceof ZodError) {
+    const zodErr = error
     return reply.code(400).send({
       error: true,
       message: 'Validation failed',
       code: 'VALIDATION_ERROR',
-      details: error.issues.map((issue) => ({
+      details: zodErr.issues.map((issue) => ({
         field: issue.path.join('.'),
         message: issue.message,
       })),
     })
   }
 
-  // Prisma ошибки
   if (error instanceof PrismaClientKnownRequestError) {
     const prismaErrors: Record<string, { status: number; message: string }> = {
       P2002: { status: 409, message: 'Unique constraint failed' },
@@ -149,50 +76,138 @@ server.setErrorHandler((error, request, reply) => {
     }
   }
 
-  // Fastify ошибки валидации (если используешь schema в роутах)
-  if (error.validation) {
+  const fastifyErr = error as unknown as { validation?: unknown }
+  if (fastifyErr.validation) {
     return reply.code(400).send({
       error: true,
       message: 'Request validation failed',
-      details: error.validation,
+      details: fastifyErr.validation,
     })
   }
 
-  // Дефолт: 500 для неизвестных ошибок
   return reply.code(500).send({
     error: true,
     message: 'Internal server error',
-    // В продакшене не отдавай stacktrace клиенту!
-    // ...(process.env.NODE_ENV === 'development' && { stack: (error as Error).stack }),
   })
 })
 
+// ─── Запуск сервера ───────────────────────────────────────────
 
-
+const PORT = Number(process.env.PORT) || 4000
 
 const start = async () => {
   try {
-    // 🔹 Плагины
+    // Плагины
     await server.register(fastifyCors, {
       origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     })
 
-    await server.register(fastifyCookie, { secret: process.env.JWT_SECRET || 'temp_secret' })
+    await server.register(fastifyCookie, {
+      // TODO: заменить 'temp_secret' на process.env.JWT_SECRET в проде без fallback
+      secret: process.env.JWT_SECRET || 'temp_secret',
+    })
 
-    // 🔹 Инициализируем сервис и хендлер модуля events
+    // Body parser — необходим для request.body в Fastify v5
+    await server.register(fastifyFormbody)
+
+    // ─── Debug-роуты ──────────────────────────────────────────
+
+    server.post('/debug/create-user', async (request, reply) => {
+      const parsed = createUserSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid data',
+          details: parsed.error.issues,
+        })
+      }
+      const { email, nickname, phone } = parsed.data
+
+      try {
+        const user = await prisma.user.create({
+          data: {
+            email,
+            phone: phone || null,
+            passwordHash: 'temp_hash_for_debug', // Только для отладки!
+            profile: {
+              create: {
+                nickname: nickname || `user_${Date.now()}`,
+                trustScore: 100,
+              },
+            },
+          },
+          include: {
+            profile: true,
+          },
+        })
+        return { success: true, user }
+      } catch (err) {
+        server.log.error('Create user failed: ' + String(err))
+        return reply.code(400).send({
+          success: false,
+          error: 'User already exists or invalid data',
+        })
+      }
+    })
+
+    server.get('/debug/users', async () => {
+      const users = await prisma.user.findMany({
+        select: {
+          id: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          profile: {
+            select: {
+              nickname: true,
+              trustScore: true,
+              isVerified: true,
+            },
+          },
+        },
+      })
+      return { users }
+    })
+
+    server.get('/', async () => {
+      return { message: 'SvoiKrug API работает! 🚀', status: 'ok' }
+    })
+
+    server.delete('/debug/users/:id', async (request, reply) => {
+      const parsed = deleteUserParamsSchema.safeParse(request.params)
+      if (!parsed.success) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid user ID format',
+          details: parsed.error.issues,
+        })
+      }
+      const { id } = parsed.data
+
+      try {
+        await prisma.user.delete({ where: { id } })
+        return { success: true, message: 'User deleted' }
+      } catch (err) {
+        server.log.error('Delete user failed: ' + String(err))
+        return reply.code(400).send({ success: false, error: 'User not found or already deleted' })
+      }
+    })
+
+    // ─── Events-роуты ─────────────────────────────────────────
+
     const eventService = new EventService(prisma)
     const eventHandler = new EventHandler(eventService)
 
-    // 🔹 Регистрируем роуты модуля events
     server.post('/events', eventHandler.create.bind(eventHandler))
     server.get('/events/:id', eventHandler.getById.bind(eventHandler))
     server.get('/events', eventHandler.list.bind(eventHandler))
     server.patch('/events/:id', eventHandler.update.bind(eventHandler))
     server.delete('/events/:id', eventHandler.delete.bind(eventHandler))
 
-    // 🔹 Debug-роуты (оставляем для тестов)
+    // ─── Health check ─────────────────────────────────────────
+
     server.get('/health', async () => {
       try {
         await prisma.$queryRaw`SELECT 1`
@@ -201,10 +216,8 @@ const start = async () => {
         return { status: 'error', database: 'disconnected' }
       }
     })
-    
-    // ... остальные debug-роуты ...
 
-    // 🔹 Запуск сервера
+    // Запуск сервера
     await server.listen({ port: PORT, host: '0.0.0.0' })
     console.log(`✅ Бэкенд запущен: http://localhost:${PORT}`)
   } catch (err) {

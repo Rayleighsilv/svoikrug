@@ -9,7 +9,7 @@ export const createEventSchema = z.object({
   startsAt: z.string().datetime('Must be ISO 8601 format'), // "2026-06-15T18:00:00Z"
   endsAt: z.string().datetime().optional(),
   maxGuests: z.number().int().min(1).max(100).optional(),
-  rules: z.record(z.any()).optional(), // JSONB для гибких правил
+  rules: z.record(z.string(), z.any()).optional(), // JSONB для гибких правил
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
 })
