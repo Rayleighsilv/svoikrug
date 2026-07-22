@@ -1,7 +1,7 @@
 import fastifyCors from '@fastify/cors'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormbody from '@fastify/formbody'
-import { z, ZodError } from 'zod'
+import { ZodError } from 'zod'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
 import { EventService } from './modules/events/service'
@@ -35,19 +35,6 @@ const adapter = new PrismaPg({
 })
 
 const prisma = new PrismaClient({ adapter })
-
-// ─── Zod-схемы для debug-роутов ───────────────────────────────
-
-const createUserSchema = z.object({
-  email: z.string().email(),
-  nickname: z.string().min(1).max(50).optional(),
-  phone: z.string().optional(),
-  trustScore: z.number().min(0).max(1000).optional(),
-})
-
-const deleteUserParamsSchema = z.object({
-  id: z.string().uuid('Invalid user ID format'),
-})
 
 // ─── Глобальный error handler ─────────────────────────────────
 
@@ -112,8 +99,7 @@ const start = async () => {
     })
 
     await server.register(fastifyCookie, {
-      // TODO: заменить 'temp_secret' на process.env.JWT_SECRET в проде без fallback
-      secret: process.env.JWT_SECRET || 'temp_secret',
+      secret: process.env.JWT_SECRET,
     })
 
     // Body parser — необходим для request.body в Fastify v5
@@ -132,87 +118,10 @@ const start = async () => {
     const authHandler = new AuthHandler(authService)
     authRoutes(server, authHandler)
 
-    // ─── Debug-роуты ──────────────────────────────────────────
-
-    server.post('/debug/create-user', async (request, reply) => {
-      const parsed = createUserSchema.safeParse(request.body)
-      if (!parsed.success) {
-        return reply.code(400).send({
-          success: false,
-          error: 'Invalid data',
-          details: parsed.error.issues,
-        })
-      }
-      const { email, nickname, phone, trustScore } = parsed.data
-
-      try {
-        const user = await prisma.user.create({
-          data: {
-            email,
-            phone: phone || null,
-            passwordHash: 'temp_hash_for_debug', // Только для отладки!
-            profile: {
-              create: {
-                nickname: nickname || `user_${Date.now()}`,
-                trustScore: trustScore ?? 100,
-              },
-            },
-          },
-          include: {
-            profile: true,
-          },
-        })
-        return { success: true, user }
-      } catch (err) {
-        server.log.error('Create user failed: ' + String(err))
-        return reply.code(400).send({
-          success: false,
-          error: 'User already exists or invalid data',
-        })
-      }
-    })
-
-    server.get('/debug/users', async () => {
-      const users = await prisma.user.findMany({
-        select: {
-          id: true,
-          email: true,
-          status: true,
-          createdAt: true,
-          profile: {
-            select: {
-              nickname: true,
-              trustScore: true,
-              isVerified: true,
-            },
-          },
-        },
-      })
-      return { users }
-    })
+    // ─── Root ──────────────────────────────────────────────────
 
     server.get('/', async () => {
       return { message: 'SvoiKrug API работает! 🚀', status: 'ok' }
-    })
-
-    server.delete('/debug/users/:id', async (request, reply) => {
-      const parsed = deleteUserParamsSchema.safeParse(request.params)
-      if (!parsed.success) {
-        return reply.code(400).send({
-          success: false,
-          error: 'Invalid user ID format',
-          details: parsed.error.issues,
-        })
-      }
-      const { id } = parsed.data
-
-      try {
-        await prisma.user.delete({ where: { id } })
-        return { success: true, message: 'User deleted' }
-      } catch (err) {
-        server.log.error('Delete user failed: ' + String(err))
-        return reply.code(400).send({ success: false, error: 'User not found or already deleted' })
-      }
     })
 
     // ─── Events-роуты ─────────────────────────────────────────
