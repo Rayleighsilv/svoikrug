@@ -28,6 +28,12 @@ if (!process.env.DATABASE_URL) {
   process.exit(1)
 }
 
+// Проверяем, что JWT_SECRET задан и имеет достаточную длину
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET is missing or too short. It must be at least 32 characters.')
+  process.exit(1)
+}
+
 // Создаём адаптер для прямого подключения к PostgreSQL
 // Примечание: prisma.config.ts создаёт свой экземпляр адаптера для CLI-команд (migrate, generate)
 const adapter = new PrismaPg({
