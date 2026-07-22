@@ -6,6 +6,12 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
 import { EventService } from './modules/events/service'
 import { EventHandler } from './modules/events/handler'
+import { AuthService } from './modules/auth/service'
+import { AuthHandler } from './modules/auth/handler'
+import { authRoutes } from './modules/auth/routes'
+
+import jwtPlugin from './plugins/jwt'
+import authenticatePlugin from './plugins/authenticate'
 
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
@@ -112,6 +118,19 @@ const start = async () => {
 
     // Body parser — необходим для request.body в Fastify v5
     await server.register(fastifyFormbody)
+
+    // ─── JWT-плагин и authenticate middleware ──────────────────
+    await server.register(jwtPlugin)
+    await server.register(authenticatePlugin)
+
+    // ─── Auth-роуты ────────────────────────────────────────────
+    const jwtAdapter: import('./modules/auth/service').JwtInstance = {
+      sign: (payload, opts) => server.jwt.sign(payload, opts || {}),
+      verify: <T = unknown>(token: string) => server.jwt.verify(token) as T,
+    }
+    const authService = new AuthService(prisma, jwtAdapter)
+    const authHandler = new AuthHandler(authService)
+    authRoutes(server, authHandler)
 
     // ─── Debug-роуты ──────────────────────────────────────────
 

@@ -99,12 +99,8 @@ export class AuthHandler {
 
   // ─── GET /auth/me ───────────────────────────────────────────
   async me(request: FastifyRequest, reply: FastifyReply) {
-    // Пока без preHandler — заглушка
-    // В следующем шаге будет middleware authenticate, который установит request.user.id
-    return reply.code(401).send({
-      error: true,
-      message: 'Authentication middleware not yet configured',
-      code: 'AUTH_MIDDLEWARE_NOT_READY',
-    })
+    const userId = request.userId as string
+    const user = await this.service.getCurrentUser(userId)
+    return reply.code(200).send({ success: true, user })
   }
 }

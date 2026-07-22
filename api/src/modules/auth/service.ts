@@ -8,8 +8,8 @@ const ACCESS_TOKEN_TTL_SECONDS = 15 * 60 // 15 минут
 const REFRESH_TOKEN_TTL_DAYS = 7
 
 // Интерфейс для JWT, который будет передан из Fastify-плагина в server.ts
-interface JwtInstance {
-  sign: (payload: object, opts?: { expiresIn?: string | number }) => string
+export interface JwtInstance {
+  sign: (payload: { sub: string }, opts?: { expiresIn?: string | number }) => string
   verify: <T = unknown>(token: string) => T
 }
 
