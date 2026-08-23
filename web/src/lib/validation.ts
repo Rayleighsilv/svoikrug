@@ -17,6 +17,12 @@ export type RegisterErrors = {
 
 type FieldMap = { email?: string; password?: string; nickname?: string }
 
+export type LoginErrors = {
+  email?: string
+  password?: string
+  form?: string
+}
+
 function validateEmail(email: string): string | undefined {
   if (!email.trim()) return 'Введите email'
   if (email.length > 255) return 'Email слишком длинный'
@@ -53,6 +59,24 @@ export function validateRegister(email: string, password: string, nickname: stri
   if (emailErr) errors.email = emailErr
   if (passErr) errors.password = passErr
   if (nickErr) errors.nickname = nickErr
+  return errors
+}
+
+// Валидация логина — только формат/заполненность (правила стойкости пароля
+// применяются при регистрации, на входе их не перепроверяем).
+export function validateLogin(email: string, password: string): {
+  email?: string
+  password?: string
+} {
+  const errors: { email?: string; password?: string } = {}
+  if (!email.trim()) {
+    errors.email = 'Введите email'
+  } else if (!EMAIL_RE.test(email)) {
+    errors.email = 'Некорректный email'
+  }
+  if (!password) {
+    errors.password = 'Введите пароль'
+  }
   return errors
 }
 
@@ -113,4 +137,15 @@ export function registerErrorMessage(err: unknown): {
     default:
       return { message: e.message || 'Произошла ошибка. Попробуйте ещё раз.' }
   }
+}
+
+// Маппинг ошибок логина: коды бэкенда → понятное сообщение для пользователя.
+export function loginErrorMessage(code?: string, message?: string): string {
+  if (code === 'INVALID_CREDENTIALS') {
+    return 'Неверный email или пароль'
+  }
+  if (code === 'ACCOUNT_SUSPENDED') {
+    return 'Аккаунт заблокирован'
+  }
+  return message || 'Произошла ошибка при входе'
 }
