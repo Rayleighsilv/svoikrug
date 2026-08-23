@@ -1,5 +1,6 @@
 import { PrismaClient, EventStatus } from '@prisma/client'
 import { CreateEventInput, UpdateEventInput } from './schema'
+import { AppError } from '../../common/errors'
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = ['draft', 'published', 'closed', 'archived'] as const
 
@@ -55,8 +56,11 @@ export class EventService {
   async updateEvent(id: string, hostId: string, data: UpdateEventInput) {
     // Проверяем, что событие принадлежит пользователю
     const existing = await this.prisma.event.findUnique({ where: { id }, select: { hostId: true } })
-    if (!existing || existing.hostId !== hostId) {
-      throw new Error('Event not found or access denied')
+    if (!existing) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (existing.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
     }
 
     return this.prisma.event.update({
@@ -68,8 +72,11 @@ export class EventService {
 
   async deleteEvent(id: string, hostId: string) {
     const existing = await this.prisma.event.findUnique({ where: { id }, select: { hostId: true } })
-    if (!existing || existing.hostId !== hostId) {
-      throw new Error('Event not found or access denied')
+    if (!existing) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (existing.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
     }
 
     await this.prisma.event.delete({ where: { id } })

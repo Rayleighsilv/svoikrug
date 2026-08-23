@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { createHash, randomBytes } from 'crypto'
 import { RegisterInput, LoginInput } from './schema'
+import { AppError } from '../../common/errors'
 
 const SALT_ROUNDS = 12
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60 // 15 минут
@@ -25,7 +26,7 @@ export class AuthService {
       where: { email: input.email },
     })
     if (existing) {
-      throw new Error('User with this email already exists')
+      throw new AppError('User with this email already exists', 409, 'EMAIL_TAKEN')
     }
 
     const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS)
@@ -54,15 +55,15 @@ export class AuthService {
       include: { profile: true },
     })
     if (!user) {
-      throw new Error('Invalid credentials')
+      throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS')
     }
     if (user.status === 'suspended') {
-      throw new Error('Account is suspended')
+      throw new AppError('Account is suspended', 403, 'ACCOUNT_SUSPENDED')
     }
 
     const passwordValid = await bcrypt.compare(input.password, user.passwordHash)
     if (!passwordValid) {
-      throw new Error('Invalid credentials')
+      throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS')
     }
 
     const tokens = await this.generateTokenPair(user.id, deviceId)
@@ -78,14 +79,14 @@ export class AuthService {
     })
 
     if (!stored) {
-      throw new Error('Invalid refresh token')
+      throw new AppError('Invalid refresh token', 401, 'INVALID_REFRESH_TOKEN')
     }
     if (stored.revokedAt) {
       // Токен уже использован — возможный признак компрометации
-      throw new Error('Refresh token already revoked')
+      throw new AppError('Refresh token already revoked', 401, 'REFRESH_TOKEN_REVOKED')
     }
     if (stored.expiresAt < new Date()) {
-      throw new Error('Refresh token expired')
+      throw new AppError('Refresh token expired', 401, 'REFRESH_TOKEN_EXPIRED')
     }
 
     // Инвалидируем старый токен
@@ -118,7 +119,7 @@ export class AuthService {
       include: { profile: true },
     })
     if (!user) {
-      throw new Error('User not found')
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND')
     }
     return this.sanitizeUser(user)
   }
