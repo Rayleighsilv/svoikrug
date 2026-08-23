@@ -36,16 +36,16 @@ export default function TestAuthPage() {
   }
 
   if (loading) {
-    return <div className="p-8">Загрузка...</div>
+    return <div className="p-8 text-gray-900">Загрузка...</div>
   }
 
   return (
-    <main className="min-h-screen p-8 bg-gray-50">
-      <h1 className="text-3xl font-semibold mb-6">🔐 Test Auth Context</h1>
+    <main className="min-h-screen p-8 bg-gray-50 text-gray-900">
+      <h1 className="text-3xl font-semibold mb-8 text-gray-600">🔐 Test Auth Context</h1>
 
       {user ? (
         <div className="mb-6 p-4 bg-green-100 rounded">
-          <h2 className="text-xl font-semibold mb-2">Вы авторизованы:</h2>
+          <h2 className="text-xl font-semibold mb-2 text-gray-600">Вы авторизованы:</h2>
           <p><strong>Email:</strong> {user.email}</p>
           <p><strong>Nickname:</strong> {user.profile?.nickname || 'Не указан'}</p>
           <p><strong>Trust Score:</strong> {user.profile?.trustScore ?? 0}</p>
@@ -69,7 +69,7 @@ export default function TestAuthPage() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full mb-2 p-2 border rounded"
+          className="w-full mb-2 p-2 border rounded text-gray-900 placeholder:text-gray-400"
           required
         />
         <input
@@ -77,7 +77,7 @@ export default function TestAuthPage() {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-2 p-2 border rounded"
+          className="w-full mb-2 p-2 border rounded text-gray-900 placeholder:text-gray-400"
           required
         />
         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">
@@ -92,7 +92,7 @@ export default function TestAuthPage() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full mb-2 p-2 border rounded"
+          className="w-full mb-2 p-2 border rounded text-gray-900 placeholder:text-gray-400"
           required
         />
         <input
@@ -100,7 +100,7 @@ export default function TestAuthPage() {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-2 p-2 border rounded"
+          className="w-full mb-2 p-2 border rounded text-gray-900 placeholder:text-gray-400"
           required
         />
         <input
@@ -108,7 +108,7 @@ export default function TestAuthPage() {
           placeholder="Nickname (опционально)"
           value={nickname}
           onChange={(e) => setNickname(e.target.value)}
-          className="w-full mb-2 p-2 border rounded"
+          className="w-full mb-2 p-2 border rounded text-gray-900 placeholder:text-gray-400"
         />
         <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded">
           Register
