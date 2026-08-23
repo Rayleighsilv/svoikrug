@@ -82,7 +82,14 @@ export class AuthService {
       throw new AppError('Invalid refresh token', 401, 'INVALID_REFRESH_TOKEN')
     }
     if (stored.revokedAt) {
-      // Токен уже использован — возможный признак компрометации
+      // Refresh-токен уже использован — вероятный признак компрометации:
+      // украденный токен предъявили повторно. Отзываем ВСЕ активные
+      // refresh-токены пользователя (invalidate семейство сессий), чтобы
+      // обезвредить злоумышленника, и отказываем в выдаче новой пары.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
       throw new AppError('Refresh token already revoked', 401, 'REFRESH_TOKEN_REVOKED')
     }
     if (stored.expiresAt < new Date()) {
