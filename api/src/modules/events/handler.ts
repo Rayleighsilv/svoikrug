@@ -7,24 +7,12 @@ export class EventHandler {
 
   // POST /events — создать событие
   async create(request: FastifyRequest, reply: FastifyReply) {
-    try {
-      const validated = createEventSchema.parse(request.body)
+    const validated = createEventSchema.parse(request.body)
 
-      // TODO: заменить на request.user.id после добавления auth
-      const hostId = 'temp-host-id-for-dev'
+    const hostId = request.userId!
 
-      const event = await this.service.createEvent(hostId, validated)
-      return reply.code(201).send({ success: true, event })
-    } catch (err: any) {
-      if (err.name === 'ZodError') {
-        return reply.code(400).send({
-          error: true,
-          message: 'Validation failed',
-          details: err.errors,
-        })
-      }
-      throw err // передаём в глобальный error handler
-    }
+    const event = await this.service.createEvent(hostId, validated)
+    return reply.code(201).send({ success: true, event })
   }
 
   // GET /events/:id — получить событие по ID
@@ -77,26 +65,11 @@ export class EventHandler {
     }
     const { id } = parsedParams.data
 
-    try {
-      const validated = updateEventSchema.parse(request.body)
-      // TODO: auth
-      const hostId = 'temp-host-id-for-dev'
+    const validated = updateEventSchema.parse(request.body)
+    const hostId = request.userId!
 
-      const event = await this.service.updateEvent(id, hostId, validated)
-      return { success: true, event }
-    } catch (err: any) {
-      if (err.name === 'ZodError') {
-        return reply.code(400).send({
-          error: true,
-          message: 'Validation failed',
-          details: err.errors,
-        })
-      }
-      if (err.message === 'Event not found or access denied') {
-        return reply.code(403).send({ error: true, message: err.message })
-      }
-      throw err
-    }
+    const event = await this.service.updateEvent(id, hostId, validated)
+    return { success: true, event }
   }
 
   // DELETE /events/:id — удалить событие
@@ -111,17 +84,9 @@ export class EventHandler {
     }
     const { id } = parsedParams.data
 
-    try {
-      // TODO: auth
-      const hostId = 'temp-host-id-for-dev'
+    const hostId = request.userId!
 
-      await this.service.deleteEvent(id, hostId)
-      return { success: true, message: 'Event deleted' }
-    } catch (err: any) {
-      if (err.message === 'Event not found or access denied') {
-        return reply.code(403).send({ error: true, message: err.message })
-      }
-      throw err
-    }
+    await this.service.deleteEvent(id, hostId)
+    return { success: true, message: 'Event deleted' }
   }
 }

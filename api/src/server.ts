@@ -13,6 +13,8 @@ import { authRoutes } from './modules/auth/routes'
 import jwtPlugin from './plugins/jwt'
 import authenticatePlugin from './plugins/authenticate'
 
+import { AppError } from './common/errors'
+
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -45,7 +47,14 @@ const prisma = new PrismaClient({ adapter })
 // ─── Глобальный error handler ─────────────────────────────────
 
 server.setErrorHandler((error, _request, reply) => {
-  server.log.error({ err: error }, 'Unhandled error')
+  // Доменные ошибки приложения (AppError) — отдаём статус и код вместо 500
+  if (error instanceof AppError) {
+    return reply.code(error.statusCode).send({
+      error: true,
+      message: error.message,
+      code: error.code,
+    })
+  }
 
   if (error instanceof ZodError) {
     const zodErr = error
@@ -63,6 +72,7 @@ server.setErrorHandler((error, _request, reply) => {
   if (error instanceof PrismaClientKnownRequestError) {
     const prismaErrors: Record<string, { status: number; message: string }> = {
       P2002: { status: 409, message: 'Unique constraint failed' },
+      P2003: { status: 400, message: 'Foreign key constraint failed' },
       P2025: { status: 404, message: 'Record not found' },
       P2021: { status: 500, message: 'Table does not exist' },
     }
@@ -85,6 +95,7 @@ server.setErrorHandler((error, _request, reply) => {
     })
   }
 
+  server.log.error({ err: error }, 'Unhandled error')
   return reply.code(500).send({
     error: true,
     message: 'Internal server error',
@@ -135,11 +146,11 @@ const start = async () => {
     const eventService = new EventService(prisma)
     const eventHandler = new EventHandler(eventService)
 
-    server.post('/events', eventHandler.create.bind(eventHandler))
+    server.post('/events', { preHandler: [server.authenticate] }, eventHandler.create.bind(eventHandler))
     server.get('/events/:id', eventHandler.getById.bind(eventHandler))
     server.get('/events', eventHandler.list.bind(eventHandler))
-    server.patch('/events/:id', eventHandler.update.bind(eventHandler))
-    server.delete('/events/:id', eventHandler.delete.bind(eventHandler))
+    server.patch<{ Params: { id: string }; Body: any }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.update.bind(eventHandler))
+    server.delete<{ Params: { id: string } }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.delete.bind(eventHandler))
 
     // ─── Health check ─────────────────────────────────────────
 
