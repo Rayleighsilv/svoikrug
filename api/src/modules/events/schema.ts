@@ -15,7 +15,13 @@ export const createEventSchema = z.object({
 })
 
 // 🔹 Схема обновления (все поля опциональны, частичное обновление)
-export const updateEventSchema = createEventSchema.partial()
+// Добавляем status (публикация/закрытие/архив). createEventSchema не имеет
+// поля status (создание всегда draft), поэтому расширяем только update.
+export const updateEventSchema = createEventSchema
+  .partial()
+  .extend({
+    status: z.enum(['draft', 'published', 'closed', 'archived']).optional(),
+  })
 
 // 🔹 Схема для параметров маршрута (валидация UUID в URL)
 export const eventIdSchema = z.object({
