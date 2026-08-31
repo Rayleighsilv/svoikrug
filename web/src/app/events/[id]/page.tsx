@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 
@@ -275,7 +276,11 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
         <div className="mt-6 p-6 bg-white rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3">Организатор</h2>
-          <p className="text-gray-700 font-medium">{event.host.profile?.nickname || 'Без имени'}</p>
+          <p className="text-gray-700 font-medium">
+            <Link href={`/users/${event.host.id}`} className="text-blue-600 hover:underline">
+              {event.host.profile?.nickname || 'Без имени'}
+            </Link>
+          </p>
           {event.host.email && <p className="text-sm text-gray-500">{event.host.email}</p>}
         </div>
 
@@ -308,7 +313,9 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                         {initial}
                       </div>
                     )}
-                    <span className="text-gray-800 font-medium">{nickname}</span>
+                    <Link href={`/users/${g.userId}`} className="text-blue-600 hover:underline">
+                      {nickname}
+                    </Link>
                   </li>
                 )
               })}

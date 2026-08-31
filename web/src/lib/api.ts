@@ -26,9 +26,15 @@ const REFRESH_URL = '/auth/refresh'
 // (NO_TOKEN — нет токена, INVALID_TOKEN — просрочен/невалиден.)
 const REFRESH_TRIGGER_CODES = new Set(['INVALID_TOKEN', 'NO_TOKEN'])
 
+// Итог refresh-запроса:
+//   'ok'         — токен обновлён, можно повторить исходный запрос;
+//   'no_session' — у клиента нет refresh-токена (гость) → сессии не было;
+//   'invalid'    — refresh-токен истёк/отозван/невалиден → пора на /login.
+type RefreshOutcome = 'ok' | 'no_session' | 'invalid'
+
 // Промис «текущего» refresh-запроса. Пока он висит, все последующие 401-ы
 // ждут его результат, а не запускают новый запрос (защита от гонок).
-let refreshPromise: Promise<boolean> | null = null
+let refreshPromise: Promise<RefreshOutcome> | null = null
 
 type ApiError = {
   status: number
@@ -81,7 +87,7 @@ function handleRefreshFailure() {
 }
 
 // Один «общий» refresh-запрос на всех параллельных гонщиков.
-function refreshAccessToken(): Promise<boolean> {
+function refreshAccessToken(): Promise<RefreshOutcome> {
   // Уже идёт refresh — дожидаемся общего результата (защита от гонок).
   if (refreshPromise) {
     return refreshPromise
@@ -91,10 +97,17 @@ function refreshAccessToken(): Promise<boolean> {
     try {
       // Только cookies: refresh-токен уходит в httpOnly cookie, новые токены
       // возвращаются в Set-Cookie. Тело не требуется.
-      const { response } = await rawFetch(REFRESH_URL, { method: 'POST' })
-      return response.ok
+      const { response, data } = await rawFetch<{ code?: string }>(REFRESH_URL, {
+        method: 'POST',
+      })
+      if (response.ok) return 'ok'
+      // Нет refresh-токена — гостю (или никому) редирект не нужен.
+      if (data.code === 'NO_REFRESH_TOKEN') return 'no_session'
+      // Иначе — сессия действительно истекла/отозвана.
+      return 'invalid'
     } catch {
-      return false
+      // Сетевая ошибка: статус неизвестен, сессии «не было» — не редиректим.
+      return 'no_session'
     } finally {
       refreshPromise = null
     }
@@ -124,12 +137,15 @@ async function request<T>(url: string, options: RequestInit = {}, retried = fals
 
     if (shouldRefresh) {
       const refreshed = await refreshAccessToken()
-      if (refreshed) {
+      if (refreshed === 'ok') {
         // Повторяем исходный запрос с теми же параметрами ровно один раз.
         return request<T>(url, options, true)
       }
-      // Refresh не удался — сессия истекла.
-      handleRefreshFailure()
+      // Сессия реально истекла/отозвана — перекидываем на /login.
+      // Гостя (no_session) не трогаем — публичные страницы остаются доступны.
+      if (refreshed === 'invalid') {
+        handleRefreshFailure()
+      }
     }
 
     throw error

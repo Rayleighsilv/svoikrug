@@ -139,7 +139,10 @@ export default function Home() {
                       {ev.theme && <p className="text-sm text-gray-500 mt-0.5">Тема: {ev.theme}</p>}
                       <p className="text-sm text-gray-600 mt-2">🕒 {formatDateTime(ev.startsAt)}</p>
                       <p className="text-sm text-gray-600">
-                        👤 Хост: {ev.host.profile?.nickname || 'Без имени'}
+                        👤 Хост:{' '}
+                        <Link href={`/users/${ev.host.id}`} className="text-blue-600 hover:underline">
+                          {ev.host.profile?.nickname || 'Без имени'}
+                        </Link>
                       </p>
                     </div>
                     <div className="text-right shrink-0">
