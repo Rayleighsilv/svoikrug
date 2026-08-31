@@ -12,6 +12,9 @@ import { rsvpRoutes } from './modules/rsvp/routes'
 import { SubscriptionService } from './modules/subscriptions/service'
 import { SubscriptionHandler } from './modules/subscriptions/handler'
 import { subscriptionRoutes } from './modules/subscriptions/routes'
+import { UsersService } from './modules/users/service'
+import { UsersHandler } from './modules/users/handler'
+import { userRoutes } from './modules/users/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -167,6 +170,11 @@ const start = async () => {
     const subscriptionService = new SubscriptionService(prisma)
     const subscriptionHandler = new SubscriptionHandler(subscriptionService)
     subscriptionRoutes(server, subscriptionHandler)
+
+    // ─── Публичный профиль пользователя ─────────────────────────
+    const usersService = new UsersService(prisma)
+    const usersHandler = new UsersHandler(usersService)
+    userRoutes(server, usersHandler)
 
     // ─── Health check ─────────────────────────────────────────
 
