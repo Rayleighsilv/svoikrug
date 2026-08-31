@@ -15,6 +15,9 @@ import { subscriptionRoutes } from './modules/subscriptions/routes'
 import { UsersService } from './modules/users/service'
 import { UsersHandler } from './modules/users/handler'
 import { userRoutes } from './modules/users/routes'
+import { RatingService } from './modules/ratings/service'
+import { RatingHandler } from './modules/ratings/handler'
+import { ratingRoutes } from './modules/ratings/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -175,6 +178,11 @@ const start = async () => {
     const usersService = new UsersService(prisma)
     const usersHandler = new UsersHandler(usersService)
     userRoutes(server, usersHandler)
+
+    // ─── Рейтинги ──────────────────────────────────────────────
+    const ratingService = new RatingService(prisma)
+    const ratingHandler = new RatingHandler(ratingService)
+    ratingRoutes(server, ratingHandler)
 
     // ─── Health check ─────────────────────────────────────────
 
