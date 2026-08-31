@@ -244,12 +244,40 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         </div>
 
         <div className="mt-6 p-6 bg-white rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-3">Участники</h2>
-          <p className="text-gray-700">
+          <h2 className="text-lg font-semibold mb-3">Гости</h2>
+          <p className="text-gray-700 mb-4">
             {event.maxGuests != null
               ? `Записалось: ${guestCount} из ${event.maxGuests}`
-              : 'Без ограничения по числу гостей'}
+              : `Записалось: ${guestCount}`}
           </p>
+
+          {guests.length === 0 ? (
+            <p className="text-gray-600">Пока никто не записался</p>
+          ) : (
+            <ul className="space-y-3">
+              {guests.map((g) => {
+                const nickname = g.user.profile?.nickname || 'Без имени'
+                const initial = nickname.charAt(0).toUpperCase() || '?'
+                return (
+                  <li key={g.id} className="flex items-center gap-3">
+                    {g.user.profile?.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={g.user.profile.avatarUrl}
+                        alt={nickname}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-white">
+                        {initial}
+                      </div>
+                    )}
+                    <span className="text-gray-800 font-medium">{nickname}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
 
         {event.rules != null && (
