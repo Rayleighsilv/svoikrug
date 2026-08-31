@@ -6,6 +6,9 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
 import { EventService } from './modules/events/service'
 import { EventHandler } from './modules/events/handler'
+import { RsvpService } from './modules/rsvp/service'
+import { RsvpHandler } from './modules/rsvp/handler'
+import { rsvpRoutes } from './modules/rsvp/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -151,6 +154,11 @@ const start = async () => {
     server.get('/events', eventHandler.list.bind(eventHandler))
     server.patch<{ Params: { id: string }; Body: any }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.update.bind(eventHandler))
     server.delete<{ Params: { id: string } }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.delete.bind(eventHandler))
+
+    // ─── RSVP-роуты ──────────────────────────────────────────────
+    const rsvpService = new RsvpService(prisma)
+    const rsvpHandler = new RsvpHandler(rsvpService)
+    rsvpRoutes(server, rsvpHandler)
 
     // ─── Health check ─────────────────────────────────────────
 
