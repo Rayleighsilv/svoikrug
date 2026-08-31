@@ -1,157 +1,163 @@
-// web/src/app/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
+import { api } from '@/lib/api'
 
-type User = {
+type EventItem = {
   id: string
-  email: string
-  profile: {
-    nickname: string
-    trustScore: number
-    isVerified: boolean
-  } | null
+  title: string
+  theme?: string | null
+  startsAt: string
+  maxGuests?: number | null
+  host: {
+    id: string
+    profile?: { nickname: string } | null
+  }
+  _count: { guests: number }
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function freeSpots(event: EventItem): number | null {
+  if (event.maxGuests == null) return null
+  return Math.max(event.maxGuests - event._count.guests, 0)
 }
 
 export default function Home() {
-  const [users, setUsers] = useState<User[]>([])
+  const { user, loading: authLoading, logout } = useAuth()
+  const router = useRouter()
+
+  const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [successMsg, setSuccessMsg] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('http://localhost:4000/debug/users')
-      .then(res => res.json())
-      .then(data => {
-        setUsers(data.users)
-        setLoading(false)
+    let cancelled = false
+    api
+      .get<{ success: boolean; events: EventItem[] }>('/events')
+      .then((data) => {
+        if (!cancelled) setEvents(data.events || [])
       })
-      .catch(err => {
-        console.error('Ошибка загрузки:', err)
-        setLoading(false)
+      .catch((err) => {
+        console.error('Ошибка загрузки событий:', err)
+        if (!cancelled) setError('Не удалось загрузить события. Попробуйте позже.')
       })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const [newUser, setNewUser] = useState({ email: '', nickname: '', rating: '' })
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const payload: Record<string, unknown> = {
-      email: newUser.email,
-      nickname: newUser.nickname || undefined,
-    }
-    if (newUser.rating) {
-      payload.trustScore = Number(newUser.rating)
-    }
-
-    try {
-      const response = await fetch('http://localhost:4000/debug/create-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setNewUser({ email: '', nickname: '', rating: '' })
-        setUsers(prevUsers => [...prevUsers, result.user])
-        setSuccessMsg('✅ Пользователь добавлен!')
-        setTimeout(() => setSuccessMsg(''), 2000)
-      } else {
-        alert(result.error || 'Ошибка создания пользователя')
-      }
-    } catch (err) {
-      console.error('Ошибка создания пользователя:', err)
-      alert('Не удалось создать пользователя')
-    }
-  }
-
-  const handleDelete = async (userId: string) => {
-    if (!confirm('Удалить этого пользователя?')) return
-
-    try {
-      const response = await fetch(`http://localhost:4000/debug/users/${userId}`, {
-        method: 'DELETE',
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setUsers(prevUsers => prevUsers.filter(u => u.id !== userId))
-      }
-    } catch (err) {
-      console.error('Ошибка удаления:', err)
-      alert('Не удалось удалить пользователя')
-    }
+  const handleLogout = async () => {
+    await logout()
+    router.replace('/')
   }
 
   return (
-    <main className="min-h-screen p-8 bg-gray-50">
-      <h1 className="text-3xl font-semibold mb-8 text-gray-600">👥 Участники SvoiKrug</h1>
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      {/* Шапка с навигацией */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link href="/" className="text-xl font-bold text-gray-900">
+            SvoiKrug
+          </Link>
 
-      {/* Форма создания пользователя */}
-      <form onSubmit={handleSubmit} className="mb-8 p-4 bg-white rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">➕ Добавить участника</h2>
-        <div className="flex gap-3">
-          <input
-            type="email"
-            placeholder="Email"
-            value={newUser.email}
-            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-            className="flex-1 p-2 border rounded text-gray-900"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Имя (необязательно)"
-            value={newUser.nickname}
-            onChange={(e) => setNewUser({ ...newUser, nickname: e.target.value })}
-            className="flex-1 p-2 border rounded text-gray-900"
-          />
-          <input
-            type="number"
-            placeholder="Рейтинг (необязательно)"
-            value={newUser.rating}
-            onChange={(e) => setNewUser({ ...newUser, rating: e.target.value })}
-            className="flex-1 p-2 border rounded text-gray-900"
-            min="0"
-            max="1000"
-          />
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Создать
-          </button>
+          <nav className="flex items-center gap-4 text-sm">
+            {!authLoading &&
+              (user ? (
+                <>
+                  <span className="text-gray-700 font-medium">
+                    {user.profile?.nickname || user.email}
+                  </span>
+                  <Link href="/events/new" className="text-blue-600 hover:underline">
+                    Создать событие
+                  </Link>
+                  <Link href="/profile" className="text-blue-600 hover:underline">
+                    Профиль
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
+                  >
+                    Выйти
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/login" className="text-blue-600 hover:underline">
+                    Войти
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                  >
+                    Регистрация
+                  </Link>
+                </>
+              ))}
+          </nav>
         </div>
-      </form>
+      </header>
 
-      {/* Сообщение об успехе */}
-      {successMsg && (
-        <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-lg text-center font-medium">
-          {successMsg}
-        </div>
-      )}
+      {/* Лента событий */}
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        <h1 className="text-2xl font-bold mb-6">Активные сборы</h1>
 
-      {loading ? (
-        <p className="text-gray-600">Загрузка...</p>
-      ) : !users || users.length === 0 ? (
-        <p className="text-gray-600">Пока нет участников</p>
-      ) : (
-        <ul className="space-y-3">
-          {users.map(user => (
-            <li key={user.id} className="p-4 bg-white rounded-lg shadow text-gray-900">
-              <strong>{user.profile?.nickname || 'Без имени'}</strong>
-              <div className="text-sm text-gray-600">{user.email}</div>
-              <div className="text-sm text-green-600">⭐ Рейтинг: {user.profile?.trustScore ?? 0}</div>
-              <button
-                onClick={() => handleDelete(user.id)}
-                className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium transition"
-              >
-                🗑️ Удалить
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        {loading ? (
+          <p className="text-gray-600">Загрузка событий...</p>
+        ) : error ? (
+          <p className="text-red-600">{error}</p>
+        ) : events.length === 0 ? (
+          <div className="p-10 text-center bg-white rounded-lg shadow">
+            <p className="text-gray-600 text-lg">Пока нет активных сборов. Будьте первым!</p>
+          </div>
+        ) : (
+          <ul className="space-y-4">
+            {events.map((ev) => {
+              const spots = freeSpots(ev)
+              return (
+                <li key={ev.id} className="p-5 bg-white rounded-lg shadow">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">{ev.title}</h2>
+                      {ev.theme && <p className="text-sm text-gray-500 mt-0.5">Тема: {ev.theme}</p>}
+                      <p className="text-sm text-gray-600 mt-2">🕒 {formatDateTime(ev.startsAt)}</p>
+                      <p className="text-sm text-gray-600">
+                        👤 Хост: {ev.host.profile?.nickname || 'Без имени'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-sm font-medium text-gray-700">
+                        {spots == null
+                          ? 'Мест — без ограничений'
+                          : spots > 0
+                            ? `Свободно: ${spots} мест`
+                            : 'Мест нет'}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </main>
   )
 }
