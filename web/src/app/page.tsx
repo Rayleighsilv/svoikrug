@@ -47,7 +47,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false
     api
-      .get<{ success: boolean; events: EventItem[] }>('/events')
+      .get<{ success: boolean; events: EventItem[] }>('/events?status=published')
       .then((data) => {
         if (!cancelled) setEvents(data.events || [])
       })

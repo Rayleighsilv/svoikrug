@@ -50,6 +50,13 @@ const RSVP_ERRORS: Record<string, string> = {
 }
 const DEFAULT_RSVP_ERROR = 'Не удалось обработать запись. Попробуйте ещё раз.'
 
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  draft: { label: 'Черновик', className: 'bg-yellow-100 text-yellow-800' },
+  published: { label: 'Открыт для записи', className: 'bg-green-100 text-green-800' },
+  closed: { label: 'Запись закрыта', className: 'bg-gray-200 text-gray-700' },
+  archived: { label: 'В архиве', className: 'bg-gray-600 text-white' },
+}
+
 export default function EventDetailPage({ params }: { params: { id: string } }) {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -62,6 +69,8 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [notFound, setNotFound] = useState(false)
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false)
   const [rsvpError, setRsvpError] = useState('')
+  const [statusSubmitting, setStatusSubmitting] = useState(false)
+  const [statusError, setStatusError] = useState('')
 
   // Загружаем событие и список гостей; loading держим до завершения обоих.
   useEffect(() => {
@@ -159,6 +168,24 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     })
   }
 
+  const handleStatusChange = async (nextStatus: string) => {
+    setStatusSubmitting(true)
+    setStatusError('')
+    try {
+      const response = await api.patch<{ success: boolean; event: { status: string } }>(
+        `/events/${id}`,
+        { status: nextStatus },
+      )
+      // Обновляем только статус, сохраняя остальные данные события.
+      setEvent((prev) => (prev ? { ...prev, status: response.event.status } : prev))
+    } catch (err) {
+      const e = (err || {}) as { message?: string }
+      setStatusError(e.message || 'Не удалось изменить статус события')
+    } finally {
+      setStatusSubmitting(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!event) return
     if (!window.confirm('Удалить это событие?')) return
@@ -229,7 +256,16 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         </button>
 
         <div className="bg-white p-6 rounded-lg shadow">
-          <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-2xl font-bold">{event.title}</h1>
+            <span
+              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                (STATUS_BADGE[event.status] || STATUS_BADGE.draft).className
+              }`}
+            >
+              {(STATUS_BADGE[event.status] || STATUS_BADGE.draft).label}
+            </span>
+          </div>
           {event.theme && <p className="text-sm text-gray-500 mb-2">Тема: {event.theme}</p>}
           <p className="text-gray-700">🕒 {formatDate(event.startsAt)}</p>
           {event.description && (
@@ -298,6 +334,10 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           </div>
         )}
 
+        {statusError && (
+          <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded">{statusError}</div>
+        )}
+
         {rsvpError && (
           <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded">{rsvpError}</div>
         )}
@@ -318,6 +358,38 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                 >
                   Удалить
                 </button>
+                {event.status === 'draft' && (
+                  <button
+                    onClick={() => handleStatusChange('published')}
+                    disabled={statusSubmitting}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
+                  >
+                    {statusSubmitting ? 'Публикуем...' : 'Опубликовать'}
+                  </button>
+                )}
+                {event.status === 'published' && (
+                  <button
+                    onClick={() => handleStatusChange('closed')}
+                    disabled={statusSubmitting}
+                    className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    {statusSubmitting ? 'Закрываем...' : 'Закрыть запись'}
+                  </button>
+                )}
+                {event.status === 'closed' && (
+                  <button
+                    onClick={() => handleStatusChange('archived')}
+                    disabled={statusSubmitting}
+                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-60"
+                  >
+                    {statusSubmitting ? 'Архивируем...' : 'В архив'}
+                  </button>
+                )}
+                {event.status === 'archived' && (
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-600 text-white self-center">
+                    В архиве
+                  </span>
+                )}
               </>
             ) : !isPublished ? (
               <button
