@@ -37,7 +37,17 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      router.replace('/')
+      // Возврат на защищённую страницу, с которой пришли (query-параметр ?from=,
+      // его проставляет middleware). Берём только внутренние пути — защита от
+      // open redirect. Если from нет — на главную.
+      const rawFrom =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('from')
+          : null
+      const safeFrom = rawFrom && rawFrom.startsWith('/') && !rawFrom.startsWith('//')
+        ? rawFrom
+        : '/'
+      router.replace(safeFrom)
     } catch (err) {
       const e = (err || {}) as { code?: string; message?: string }
       setErrors({ form: loginErrorMessage(e.code, e.message) })
