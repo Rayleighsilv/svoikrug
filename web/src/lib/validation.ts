@@ -149,3 +149,57 @@ export function loginErrorMessage(code?: string, message?: string): string {
   }
   return message || 'Произошла ошибка при входе'
 }
+
+// ─── Валидация создания события (сверено с createEventSchema на бэке) ────
+export type CreateEventErrors = {
+  title?: string
+  description?: string
+  theme?: string
+  startsAt?: string
+  maxGuests?: string
+  form?: string
+}
+
+export function validateCreateEvent(input: {
+  title: string
+  description: string
+  theme: string
+  startsAt: string
+  maxGuests: string
+}): CreateEventErrors {
+  const errors: CreateEventErrors = {}
+
+  const title = input.title.trim()
+  if (!title) {
+    errors.title = 'Введите название'
+  } else if (title.length < 3) {
+    errors.title = 'Название должно содержать минимум 3 символа'
+  } else if (title.length > 100) {
+    errors.title = 'Название должно быть не длиннее 100 символов'
+  }
+
+  if (input.description && input.description.length > 1000) {
+    errors.description = 'Описание должно быть не длиннее 1000 символов'
+  }
+
+  if (input.theme && input.theme.length > 50) {
+    errors.theme = 'Тематика должна быть не длиннее 50 символов'
+  }
+
+  if (!input.startsAt) {
+    errors.startsAt = 'Укажите дату и время начала'
+  } else if (Number.isNaN(new Date(input.startsAt).getTime())) {
+    errors.startsAt = 'Некорректная дата и время'
+  }
+
+  if (input.maxGuests !== '') {
+    const n = Number(input.maxGuests)
+    if (!Number.isInteger(n)) {
+      errors.maxGuests = 'Максимум гостей должен быть целым числом'
+    } else if (n < 1 || n > 100) {
+      errors.maxGuests = 'Максимум гостей должен быть от 1 до 100'
+    }
+  }
+
+  return errors
+}
