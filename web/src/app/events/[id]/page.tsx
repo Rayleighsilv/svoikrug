@@ -31,35 +31,121 @@ type EventDetail = {
   _count: { guests: number }
 }
 
+type GuestItem = {
+  id: string
+  userId: string
+  status: string
+  user: {
+    id: string
+    profile?: { nickname?: string | null; avatarUrl?: string | null } | null
+  }
+}
+
+const RSVP_ERRORS: Record<string, string> = {
+  ALREADY_JOINED: 'Вы уже записаны на это событие.',
+  EVENT_FULL: 'Свободных мест больше нет.',
+  EVENT_NOT_PUBLISHED: 'Событие ещё не открыто для записи.',
+  CANNOT_JOIN_OWN_EVENT: 'Нельзя записаться на своё событие.',
+  NOT_A_GUEST: 'Вы не записаны на это событие.',
+}
+const DEFAULT_RSVP_ERROR = 'Не удалось обработать запись. Попробуйте ещё раз.'
+
 export default function EventDetailPage({ params }: { params: { id: string } }) {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
-
   const id = params.id
 
   const [event, setEvent] = useState<EventDetail | null>(null)
+  const [guests, setGuests] = useState<GuestItem[]>([])
+  const [guestCount, setGuestCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [rsvpSubmitting, setRsvpSubmitting] = useState(false)
+  const [rsvpError, setRsvpError] = useState('')
 
+  // Загружаем событие и список гостей; loading держим до завершения обоих.
   useEffect(() => {
     let cancelled = false
+    let pending = 2
+    const done = () => {
+      if (cancelled) return
+      pending -= 1
+      if (pending === 0) setLoading(false)
+    }
+
     api
       .get<{ success: boolean; event: EventDetail }>(`/events/${id}`)
       .then((data) => {
-        if (!cancelled) setEvent(data.event)
+        if (cancelled) return
+        setEvent(data.event)
+        setGuestCount(data.event._count.guests)
       })
       .catch(() => {
         if (!cancelled) setNotFound(true)
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
+      .finally(done)
+
+    api
+      .get<{ success: boolean; guests: GuestItem[] }>(`/events/${id}/guests`)
+      .then((data) => {
+        if (cancelled) return
+        const list = data.guests || []
+        setGuests(list)
+        setGuestCount(list.length)
       })
+      .catch(() => {
+        if (!cancelled) setGuests([])
+      })
+      .finally(done)
+
     return () => {
       cancelled = true
     }
   }, [id])
 
+  const signedUp = !!(user && guests.some((g) => g.userId === user.id))
   const isHost = !!(user && event && user.id === event.hostId)
+  const isPublished = event?.status === 'published'
+  const isFull = !!(event && event.maxGuests != null && guestCount >= event.maxGuests)
+
+  const refetchGuests = async () => {
+    const data = await api.get<{ success: boolean; guests: GuestItem[] }>(`/events/${id}/guests`)
+    const list = data.guests || []
+    setGuests(list)
+    setGuestCount(list.length)
+  }
+
+  const handleJoin = async () => {
+    if (!user) {
+      router.replace(`/login?from=/events/${id}`)
+      return
+    }
+    setRsvpSubmitting(true)
+    setRsvpError('')
+    try {
+      await api.post(`/events/${id}/rsvp`)
+      await refetchGuests()
+    } catch (err) {
+      const e = (err || {}) as { code?: string }
+      setRsvpError(e.code ? (RSVP_ERRORS[e.code] ?? DEFAULT_RSVP_ERROR) : DEFAULT_RSVP_ERROR)
+    } finally {
+      setRsvpSubmitting(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    setRsvpSubmitting(true)
+    setRsvpError('')
+    try {
+      await api.delete(`/events/${id}/rsvp`)
+      await refetchGuests()
+    } catch (err) {
+      const e = (err || {}) as { code?: string }
+      setRsvpError(e.code ? (RSVP_ERRORS[e.code] ?? DEFAULT_RSVP_ERROR) : DEFAULT_RSVP_ERROR)
+    } finally {
+      setRsvpSubmitting(false)
+    }
+  }
 
   const formatDate = (iso: string) => {
     const d = new Date(iso)
@@ -73,21 +159,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     })
   }
 
-  const handleRegister = () => {
-    if (!user) {
-      router.replace(`/login?from=/events/${id}`)
-      return
-    }
-    alert('RSVP будет реализован в следующей задаче')
-  }
-
   const handleDelete = async () => {
     if (!event) return
     if (!window.confirm('Удалить это событие?')) return
     try {
       await api.delete(`/events/${event.id}`)
       router.replace('/')
-    } catch (err) {
+    } catch {
       alert('Не удалось удалить событие')
     }
   }
@@ -146,10 +224,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   return (
     <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
       <div className="max-w-3xl mx-auto">
-        <button
-          onClick={() => router.replace('/')}
-          className="mb-4 text-blue-600 hover:underline"
-        >
+        <button onClick={() => router.replace('/')} className="mb-4 text-blue-600 hover:underline">
           ← Назад к событиям
         </button>
 
@@ -172,7 +247,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           <h2 className="text-lg font-semibold mb-3">Участники</h2>
           <p className="text-gray-700">
             {event.maxGuests != null
-              ? `Записалось: ${event._count.guests} из ${event.maxGuests}`
+              ? `Записалось: ${guestCount} из ${event.maxGuests}`
               : 'Без ограничения по числу гостей'}
           </p>
         </div>
@@ -195,6 +270,10 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           </div>
         )}
 
+        {rsvpError && (
+          <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded">{rsvpError}</div>
+        )}
+
         {!authLoading && (
           <div className="mt-8 flex gap-3">
             {isHost ? (
@@ -212,12 +291,35 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                   Удалить
                 </button>
               </>
+            ) : !isPublished ? (
+              <button
+                disabled
+                className="px-4 py-2 bg-gray-200 text-gray-600 rounded cursor-not-allowed"
+              >
+                Событие ещё не открыто для записи
+              </button>
+            ) : isFull ? (
+              <button
+                disabled
+                className="px-4 py-2 bg-gray-200 text-gray-600 rounded cursor-not-allowed"
+              >
+                Мест нет
+              </button>
+            ) : signedUp ? (
+              <button
+                onClick={handleCancel}
+                disabled={rsvpSubmitting}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-60"
+              >
+                {rsvpSubmitting ? 'Отменяем...' : 'Отменить запись'}
+              </button>
             ) : (
               <button
-                onClick={handleRegister}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                onClick={handleJoin}
+                disabled={rsvpSubmitting}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
               >
-                Записаться
+                {rsvpSubmitting ? 'Записываемся...' : 'Записаться'}
               </button>
             )}
           </div>
