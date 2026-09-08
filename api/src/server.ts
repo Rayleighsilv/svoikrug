@@ -21,6 +21,9 @@ import { ratingRoutes } from './modules/ratings/routes'
 import { FeedService } from './modules/feed/service'
 import { FeedHandler } from './modules/feed/handler'
 import { feedRoutes } from './modules/feed/routes'
+import { NotificationService } from './modules/notifications/service'
+import { NotificationHandler } from './modules/notifications/handler'
+import { notificationRoutes } from './modules/notifications/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -191,6 +194,11 @@ const start = async () => {
     const feedService = new FeedService(prisma)
     const feedHandler = new FeedHandler(feedService)
     feedRoutes(server, feedHandler)
+
+    // ─── Уведомления ──────────────────────────────────────────
+    const notificationService = new NotificationService(prisma)
+    const notificationHandler = new NotificationHandler(notificationService)
+    notificationRoutes(server, notificationHandler)
 
     // ─── Health check ─────────────────────────────────────────
 

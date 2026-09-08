@@ -55,7 +55,10 @@ export class EventService {
 
   async updateEvent(id: string, hostId: string, data: UpdateEventInput) {
     // Проверяем, что событие принадлежит пользователю
-    const existing = await this.prisma.event.findUnique({ where: { id }, select: { hostId: true } })
+    const existing = await this.prisma.event.findUnique({
+      where: { id },
+      select: { hostId: true, status: true },
+    })
     if (!existing) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
     }
@@ -63,11 +66,33 @@ export class EventService {
       throw new AppError('Access denied', 403, 'ACCESS_DENIED')
     }
 
-    return this.prisma.event.update({
+    const event = await this.prisma.event.update({
       where: { id },
       data: data as any,
-      include: { host: { select: { email: true } } },
+      include: {
+        host: { select: { email: true, profile: { select: { nickname: true } } } },
+      },
     })
+
+    // Уведомляем подписчиков хоста при переходе draft → published (без дублей).
+    if (existing.status === 'draft' && data.status === 'published' && event.status === 'published') {
+      const subs = await this.prisma.subscription.findMany({
+        where: { followingId: hostId },
+        select: { followerId: true },
+      })
+      const hostName = event.host.profile?.nickname ?? 'Хост'
+      if (subs.length > 0) {
+        await this.prisma.notification.createMany({
+          data: subs.map((s) => ({
+            userId: s.followerId,
+            type: 'NEW_EVENT_FROM_SUBSCRIPTION',
+            payload: { eventId: event.id, title: event.title, hostName },
+          })),
+        })
+      }
+    }
+
+    return event
   }
 
   async deleteEvent(id: string, hostId: string) {

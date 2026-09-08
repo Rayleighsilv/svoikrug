@@ -48,6 +48,7 @@ model User {
   ratingsGiven  Rating[]  @relation("Rater")
   ratingsReceived Rating[] @relation("Rated")
   refreshTokens RefreshToken[]
+  notifications     Notification[]
 
   @@map("users")
   @@index([email])
@@ -158,4 +159,19 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  payload   Json
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import NotificationBell from '@/components/NotificationBell'
 
 type EventItem = {
   id: string
@@ -114,6 +115,7 @@ export default function Home() {
             {!authLoading &&
               (user ? (
                 <>
+                  <NotificationBell />
                   <span className="text-gray-700 font-medium">
                     {user.profile?.nickname || user.email}
                   </span>

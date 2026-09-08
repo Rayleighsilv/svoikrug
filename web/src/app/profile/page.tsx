@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import NotificationBell from '@/components/NotificationBell'
 
 type EventItem = {
   id: string
@@ -93,6 +94,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Профиль</h1>
           <div className="flex gap-3">
+            <NotificationBell />
             <Link
               href="/events/new"
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
