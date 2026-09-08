@@ -69,4 +69,42 @@ export class RsvpService {
       orderBy: { joinedAt: 'asc' },
     })
   }
+
+  // POST /events/:id/mark-attendance — хост отмечает присутствующих
+  async markAttendance(eventId: string, hostId: string, userIds: string[]) {
+    const event = await this.prisma.event.findUnique({ where: { id: eventId } })
+    if (!event) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (event.status !== 'closed' && event.status !== 'archived') {
+      throw new AppError('Event is not closed', 400, 'EVENT_NOT_CLOSED')
+    }
+    if (event.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
+    }
+
+    const target = new Set(userIds)
+    const guestRows = await this.prisma.eventGuest.findMany({
+      where: { eventId, status: { in: ['approved', 'attended'] } },
+    })
+    const guestMap = new Map(guestRows.map((g) => [g.userId, g] as const))
+
+    // Каждый целевой пользователь должен быть гостем события.
+    for (const uid of target) {
+      if (!guestMap.has(uid)) {
+        throw new AppError('User is not a guest of this event', 404, 'NOT_A_GUEST')
+      }
+    }
+
+    // Разрешены только переходы approved <-> attended.
+    for (const [uid, g] of guestMap) {
+      if (target.has(uid) && g.status !== 'attended') {
+        await this.prisma.eventGuest.update({ where: { id: g.id }, data: { status: 'attended' as GuestStatus } })
+      } else if (!target.has(uid) && g.status === 'attended') {
+        await this.prisma.eventGuest.update({ where: { id: g.id }, data: { status: 'approved' as GuestStatus } })
+      }
+    }
+
+    return this.prisma.eventGuest.findMany({ where: { eventId } })
+  }
 }

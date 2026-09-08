@@ -72,6 +72,8 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [rsvpError, setRsvpError] = useState('')
   const [statusSubmitting, setStatusSubmitting] = useState(false)
   const [statusError, setStatusError] = useState('')
+  const [attendanceSubmitting, setAttendanceSubmitting] = useState(false)
+  const [attendanceError, setAttendanceError] = useState('')
 
   // Загружаем событие и список гостей; loading держим до завершения обоих.
   useEffect(() => {
@@ -184,6 +186,32 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       setStatusError(e.message || 'Не удалось изменить статус события')
     } finally {
       setStatusSubmitting(false)
+    }
+  }
+
+  const handleAttendance = async (userId: string, checked: boolean) => {
+    if (!event) return
+    setAttendanceSubmitting(true)
+    setAttendanceError('')
+    const current = new Set(guests.filter((g) => g.status === 'attended').map((g) => g.userId))
+    if (checked) {
+      current.add(userId)
+    } else {
+      current.delete(userId)
+    }
+    try {
+      const res = await api.post<{ success: boolean; guests: GuestItem[] }>(
+        `/events/${event.id}/mark-attendance`,
+        { userIds: Array.from(current) },
+      )
+      const list = res.guests || []
+      setGuests(list)
+      setGuestCount(list.length)
+    } catch (err) {
+      const e = (err || {}) as { message?: string }
+      setAttendanceError(e.message || 'Не удалось обновить посещаемость')
+    } finally {
+      setAttendanceSubmitting(false)
     }
   }
 
@@ -322,6 +350,38 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             </ul>
           )}
         </div>
+
+        {isHost && (event.status === 'closed' || event.status === 'archived') && (
+          <div className="mt-6 p-6 bg-white rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-3">Отметить присутствующих</h2>
+            {attendanceError && (
+              <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{attendanceError}</div>
+            )}
+            {guests.length === 0 ? (
+              <p className="text-gray-600">Нет записавшихся гостей</p>
+            ) : (
+              <ul className="space-y-2">
+                {guests.map((g) => {
+                  const nickname = g.user.profile?.nickname || 'Без имени'
+                  return (
+                    <li key={g.id}>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={g.status === 'attended'}
+                          disabled={attendanceSubmitting}
+                          onChange={(e) => handleAttendance(g.userId, e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        <span className="font-medium">{nickname}</span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         {event.rules != null && (
           <div className="mt-6 p-6 bg-white rounded-lg shadow">

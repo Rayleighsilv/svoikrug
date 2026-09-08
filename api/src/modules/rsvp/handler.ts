@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { RsvpService } from './service'
-import { rsvpParamsSchema } from './schema'
+import { rsvpParamsSchema, markAttendanceSchema } from './schema'
 
 export class RsvpHandler {
   constructor(private service: RsvpService) {}
@@ -52,6 +52,35 @@ export class RsvpHandler {
     const { id } = parsed.data
 
     const guests = await this.service.listGuests(id)
+    return { success: true, guests }
+  }
+
+  // POST /events/:id/mark-attendance
+  async markAttendance(
+    request: FastifyRequest<{ Params: { id: string }; Body: { userIds?: string[] } }>,
+    reply: FastifyReply,
+  ) {
+    const parsedParams = rsvpParamsSchema.safeParse(request.params)
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Invalid event ID format',
+        details: parsedParams.error.issues,
+      })
+    }
+    const parsedBody = markAttendanceSchema.safeParse(request.body)
+    if (!parsedBody.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: parsedBody.error.issues,
+      })
+    }
+    const { id } = parsedParams.data
+    const hostId = request.userId!
+
+    const guests = await this.service.markAttendance(id, hostId, parsedBody.data.userIds)
     return { success: true, guests }
   }
 }
