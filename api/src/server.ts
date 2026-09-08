@@ -18,6 +18,9 @@ import { userRoutes } from './modules/users/routes'
 import { RatingService } from './modules/ratings/service'
 import { RatingHandler } from './modules/ratings/handler'
 import { ratingRoutes } from './modules/ratings/routes'
+import { FeedService } from './modules/feed/service'
+import { FeedHandler } from './modules/feed/handler'
+import { feedRoutes } from './modules/feed/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -183,6 +186,11 @@ const start = async () => {
     const ratingService = new RatingService(prisma)
     const ratingHandler = new RatingHandler(ratingService)
     ratingRoutes(server, ratingHandler)
+
+    // ─── Лента подписок ────────────────────────────────────────
+    const feedService = new FeedService(prisma)
+    const feedHandler = new FeedHandler(feedService)
+    feedRoutes(server, feedHandler)
 
     // ─── Health check ─────────────────────────────────────────
 
