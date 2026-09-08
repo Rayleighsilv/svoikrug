@@ -74,6 +74,11 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [statusError, setStatusError] = useState('')
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(false)
   const [attendanceError, setAttendanceError] = useState('')
+  const [scores, setScores] = useState<Record<string, number>>({})
+  const [comments, setComments] = useState<Record<string, string>>({})
+  const [ratedUsers, setRatedUsers] = useState<Set<string>>(new Set())
+  const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null)
+  const [ratingError, setRatingError] = useState('')
 
   // Загружаем событие и список гостей; loading держим до завершения обоих.
   useEffect(() => {
@@ -119,6 +124,10 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const isHost = !!(user && event && user.id === event.hostId)
   const isPublished = event?.status === 'published'
   const isFull = !!(event && event.maxGuests != null && guestCount >= event.maxGuests)
+
+  const myGuest = user ? guests.find((g) => g.userId === user.id) : null
+  const iAttended = myGuest?.status === 'attended'
+  const rateable = guests.filter((g) => g.status === 'attended' && g.userId !== user?.id)
 
   const refetchGuests = async () => {
     const data = await api.get<{ success: boolean; guests: GuestItem[] }>(`/events/${id}/guests`)
@@ -212,6 +221,39 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       setAttendanceError(e.message || 'Не удалось обновить посещаемость')
     } finally {
       setAttendanceSubmitting(false)
+    }
+  }
+
+  const handleRate = async (userId: string) => {
+    if (!event) return
+    const score = scores[userId]
+    if (!score) {
+      setRatingError('Выберите оценку')
+      return
+    }
+    setRatingSubmitting(userId)
+    setRatingError('')
+    try {
+      await api.post(`/events/${event.id}/ratings`, {
+        ratedUserId: userId,
+        score,
+        comment: comments[userId]?.trim() || undefined,
+      })
+      setRatedUsers((prev) => new Set(prev).add(userId))
+    } catch (err) {
+      const e = (err || {}) as { code?: string }
+      const map: Record<string, string> = {
+        CANNOT_RATE_SELF: 'Нельзя оценить себя.',
+        NOT_A_GUEST: 'Этот участник не был гостем, или вы не были гостем события.',
+        ALREADY_RATED: 'Вы уже оценили этого участника.',
+        EVENT_NOT_CLOSED: 'Событие ещё не закрыто для оценок.',
+      }
+      if (e.code === 'ALREADY_RATED') {
+        setRatedUsers((prev) => new Set(prev).add(userId))
+      }
+      setRatingError(e.code ? (map[e.code] || 'Не удалось отправить оценку') : 'Не удалось отправить оценку')
+    } finally {
+      setRatingSubmitting(null)
     }
   }
 
@@ -375,6 +417,86 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                         />
                         <span className="font-medium">{nickname}</span>
                       </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {(event.status === 'closed' || event.status === 'archived') && iAttended && (
+          <div className="mt-6 p-6 bg-white rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-3">Оценить участников</h2>
+            {ratingError && (
+              <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{ratingError}</div>
+            )}
+            {rateable.length === 0 ? (
+              <p className="text-gray-600">Нет участников для оценки</p>
+            ) : rateable.every((g) => ratedUsers.has(g.userId)) ? (
+              <p className="text-gray-600">Вы оценили всех участников</p>
+            ) : (
+              <ul className="space-y-4">
+                {rateable.map((g) => {
+                  const nickname = g.user.profile?.nickname || 'Без имени'
+                  const initial = (nickname || '?').charAt(0).toUpperCase()
+                  const isRated = ratedUsers.has(g.userId)
+                  const isSubmitting = ratingSubmitting === g.userId
+                  return (
+                    <li key={g.id}>
+                      <div className="flex items-center gap-3">
+                        <Link href={`/users/${g.userId}`} className="flex items-center gap-3 text-blue-600 hover:underline">
+                          {g.user.profile?.avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={g.user.profile.avatarUrl}
+                              alt={nickname}
+                              className="w-9 h-9 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-gray-300 flex items-center justify-center font-bold text-white">
+                              {initial}
+                            </div>
+                          )}
+                          <span className="font-medium">{nickname}</span>
+                        </Link>
+                        {isRated ? (
+                          <span className="text-sm text-green-600 font-medium">Оценён</span>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-1">
+                            <select
+                              value={scores[g.userId] || 0}
+                              onChange={(e) => setScores((prev) => ({ ...prev, [g.userId]: Number(e.target.value) }))}
+                              className="p-1 border rounded text-sm"
+                              disabled={isSubmitting}
+                            >
+                              <option value={0} disabled>
+                                Оценка
+                              </option>
+                              {[1, 2, 3, 4, 5].map((v) => (
+                                <option key={v} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={comments[g.userId] || ''}
+                              onChange={(e) => setComments((prev) => ({ ...prev, [g.userId]: e.target.value }))}
+                              placeholder="Комментарий (необязательно)"
+                              className="p-1 border rounded text-sm flex-1"
+                              disabled={isSubmitting}
+                            />
+                            <button
+                              onClick={() => handleRate(g.userId)}
+                              disabled={isSubmitting || !scores[g.userId]}
+                              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60"
+                            >
+                              {isSubmitting ? 'Отправляем...' : 'Оценить'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </li>
                   )
                 })}

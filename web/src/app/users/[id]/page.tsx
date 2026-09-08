@@ -23,6 +23,15 @@ type PublicUser = {
   trustScore: number
 }
 
+type RatingItem = {
+  id: string
+  score: number
+  comment?: string | null
+  createdAt: string
+  event: { title: string }
+  rater: { nickname: string | null }
+}
+
 const FOLLOW_ERRORS: Record<string, string> = {
   ALREADY_FOLLOWING: 'Вы уже подписаны на этого пользователя.',
   CANNOT_FOLLOW_SELF: 'Нельзя подписаться на себя.',
@@ -55,6 +64,11 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
   const [notFound, setNotFound] = useState(false)
   const [followSubmitting, setFollowSubmitting] = useState(false)
   const [followError, setFollowError] = useState('')
+  const [ratingSummary, setRatingSummary] = useState<{ averageScore: number; totalCount: number }>({
+    averageScore: 0,
+    totalCount: 0,
+  })
+  const [ratings, setRatings] = useState<RatingItem[]>([])
 
   const isOwnProfile = !!(user && user.id === id)
 
@@ -77,6 +91,26 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  // Сводка и список рейтингов пользователя.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get<{ success: boolean; averageScore: number; totalCount: number }>(`/users/${id}/rating-summary`)
+      .then((d) => {
+        if (!cancelled) setRatingSummary({ averageScore: d.averageScore, totalCount: d.totalCount })
+      })
+      .catch(() => {})
+    api
+      .get<{ success: boolean; ratings: RatingItem[] }>(`/users/${id}/ratings`)
+      .then((d) => {
+        if (!cancelled) setRatings(d.ratings || [])
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -222,6 +256,24 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
           <p className="text-gray-700">
             <strong className="text-lg">{following.length}</strong> подписок
           </p>
+        </div>
+
+        <div className="mt-6 p-6 bg-white rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-3">Рейтинг</h2>
+          <p className="text-gray-700">
+            Средний балл: <strong>{ratingSummary.averageScore}</strong> из 5 ·{' '}
+            {ratingSummary.totalCount} оценок
+          </p>
+          {ratings.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {ratings.map((r) => (
+                <li key={r.id} className="text-sm text-gray-600">
+                  <strong>{r.rater.nickname || 'Без имени'}</strong> · оценка {r.score}/5 · {r.event.title}
+                  {r.comment ? ` — ${r.comment}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="mt-8">
