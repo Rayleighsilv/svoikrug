@@ -1,6 +1,8 @@
 import fastifyCors from '@fastify/cors'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormbody from '@fastify/formbody'
+import fastifyRateLimit from '@fastify/rate-limit'
+import fastifyHelmet from '@fastify/helmet'
 import { ZodError } from 'zod'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
@@ -49,9 +51,28 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Проверяем, что JWT_SECRET задан и имеет достаточную длину
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+const jwtSecret = process.env.JWT_SECRET
+if (!jwtSecret || jwtSecret.length < 32) {
   console.error('❌ JWT_SECRET is missing or too short. It must be at least 32 characters.')
   process.exit(1)
+}
+
+// COOKIE_SECRET может быть отдельным от JWT_SECRET; если он задан — тоже ≥32 символов.
+const cookieSecret = process.env.COOKIE_SECRET || jwtSecret
+if (!cookieSecret || cookieSecret.length < 32) {
+  console.error('❌ COOKIE_SECRET is missing or too short. It must be at least 32 characters.')
+  process.exit(1)
+}
+
+// В production запрещаем запуск с дефолтными/небезопасными секретами
+if (process.env.NODE_ENV === 'production') {
+  const unsafe = (s: string) =>
+    s.includes('change_me') ||
+    ['secret', 'changeme', 'svoikrug_dev_secret_change_me_in_prod'].includes(s)
+  if (unsafe(jwtSecret) || unsafe(cookieSecret)) {
+    console.error('❌ Refusing to start in production with default/insecure secrets.')
+    process.exit(1)
+  }
 }
 
 // Создаём адаптер для прямого подключения к PostgreSQL
@@ -113,6 +134,17 @@ server.setErrorHandler((error, _request, reply) => {
     })
   }
 
+  // Ошибки Fastify-плагинов (например, @fastify/rate-limit → 429) несут statusCode.
+  // Клиентские 4xx отдаём как есть, а не превращаем в 500.
+  const err = error as { statusCode?: number; code?: string; message?: string }
+  if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+    return reply.code(err.statusCode).send({
+      error: true,
+      message: err.message || 'Request error',
+      code: err.code,
+    })
+  }
+
   server.log.error({ err: error }, 'Unhandled error')
   return reply.code(500).send({
     error: true,
@@ -127,18 +159,43 @@ const PORT = Number(process.env.PORT) || 4000
 const start = async () => {
   try {
     // Плагины
+    // Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS и др.
+    await server.register(fastifyHelmet, {
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+    // Отключаем X-Powered-By
+    server.addHook('onSend', async (_request, reply, payload) => {
+      reply.removeHeader('X-Powered-By')
+      return payload
+    })
+
+    // CORS: в production разрешаем только прод-домен
+    const allowedOrigins =
+      process.env.NODE_ENV === 'production'
+        ? ['https://svoikrug.ru']
+        : ['http://localhost:3000', 'http://127.0.0.1:3000']
+
     await server.register(fastifyCors, {
-      origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: allowedOrigins,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     })
 
     await server.register(fastifyCookie, {
-      secret: process.env.JWT_SECRET,
+      secret: cookieSecret,
     })
 
     // Body parser — необходим для request.body в Fastify v5
     await server.register(fastifyFormbody)
+
+    // Rate limiting: глобально 100 запросов/мин на IP (in-memory).
+    // На auth-роутах лимиты строже (см. modules/auth/routes.ts).
+    await server.register(fastifyRateLimit, {
+      global: true,
+      max: 100,
+      timeWindow: '1 minute',
+    })
 
     // ─── JWT-плагин и authenticate middleware ──────────────────
     await server.register(jwtPlugin)
