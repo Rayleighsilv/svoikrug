@@ -1,61 +1,14 @@
-/*
-  Warnings:
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
 
-  - The values [DRAFT,PUBLISHED,COMPLETED,CANCELLED] on the enum `EventStatus` will be removed. If these variants are still used in the database, this will fail.
-  - You are about to drop the `Event` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `EventParticipant` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `Review` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `User` table. If the table is not empty, all the data it contains will be lost.
-
-*/
 -- CreateEnum
 CREATE TYPE "UserStatus" AS ENUM ('active', 'suspended');
 
 -- CreateEnum
+CREATE TYPE "EventStatus" AS ENUM ('draft', 'published', 'closed', 'archived');
+
+-- CreateEnum
 CREATE TYPE "GuestStatus" AS ENUM ('pending', 'approved', 'rejected', 'attended', 'cancelled');
-
--- AlterEnum
-BEGIN;
-CREATE TYPE "EventStatus_new" AS ENUM ('draft', 'published', 'closed', 'archived');
-ALTER TABLE "public"."Event" ALTER COLUMN "status" DROP DEFAULT;
-ALTER TABLE "events" ALTER COLUMN "status" TYPE "EventStatus_new" USING ("status"::text::"EventStatus_new");
-ALTER TYPE "EventStatus" RENAME TO "EventStatus_old";
-ALTER TYPE "EventStatus_new" RENAME TO "EventStatus";
-DROP TYPE "public"."EventStatus_old";
-COMMIT;
-
--- DropForeignKey
-ALTER TABLE "Event" DROP CONSTRAINT "Event_hostId_fkey";
-
--- DropForeignKey
-ALTER TABLE "EventParticipant" DROP CONSTRAINT "EventParticipant_eventId_fkey";
-
--- DropForeignKey
-ALTER TABLE "EventParticipant" DROP CONSTRAINT "EventParticipant_userId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Review" DROP CONSTRAINT "Review_eventId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Review" DROP CONSTRAINT "Review_fromUserId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Review" DROP CONSTRAINT "Review_toUserId_fkey";
-
--- DropTable
-DROP TABLE "Event";
-
--- DropTable
-DROP TABLE "EventParticipant";
-
--- DropTable
-DROP TABLE "Review";
-
--- DropTable
-DROP TABLE "User";
-
--- DropEnum
-DROP TYPE "ParticipantStatus";
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -136,6 +89,31 @@ CREATE TABLE "ratings" (
     CONSTRAINT "ratings_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "refresh_tokens" (
+    "id" TEXT NOT NULL,
+    "token_hash" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "device_id" TEXT,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "revoked_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "refresh_tokens_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "notifications" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "is_read" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "notifications_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
@@ -193,6 +171,21 @@ CREATE INDEX "ratings_rated_id_created_at_idx" ON "ratings"("rated_id", "created
 -- CreateIndex
 CREATE INDEX "idx_rating_unique" ON "ratings"("rater_id", "event_id");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens"("token_hash");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_expires_at_idx" ON "refresh_tokens"("expires_at");
+
+-- CreateIndex
+CREATE INDEX "notifications_user_id_is_read_idx" ON "notifications"("user_id", "is_read");
+
+-- CreateIndex
+CREATE INDEX "notifications_created_at_idx" ON "notifications"("created_at");
+
 -- AddForeignKey
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -219,3 +212,10 @@ ALTER TABLE "ratings" ADD CONSTRAINT "ratings_rater_id_fkey" FOREIGN KEY ("rater
 
 -- AddForeignKey
 ALTER TABLE "ratings" ADD CONSTRAINT "ratings_rated_id_fkey" FOREIGN KEY ("rated_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
