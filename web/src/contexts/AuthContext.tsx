@@ -25,6 +25,7 @@ type AuthContextType = {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, nickname?: string) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -76,8 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Повторно загружаем текущего пользователя (после изменения профиля).
+  const refreshUser = async () => {
+    try {
+      const response = await api.get<{ success: boolean; user: User }>('/auth/me')
+      setUser(response.user)
+    } catch {
+      // игнорируем — пользователь мог выйти
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

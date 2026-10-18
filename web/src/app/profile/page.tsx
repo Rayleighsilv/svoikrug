@@ -30,11 +30,17 @@ function formatDate(iso: string): string {
 }
 
 export default function ProfilePage() {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, refreshUser } = useAuth()
   const router = useRouter()
 
   const [myEvents, setMyEvents] = useState<EventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [nickname, setNickname] = useState('')
+  const [bio, setBio] = useState('')
+  const [district, setDistrict] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   // Middleware уже должен отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -70,6 +76,49 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     await logout()
     router.replace('/')
+  }
+
+  const startEditing = () => {
+    setNickname(user?.profile?.nickname || '')
+    setBio(user?.profile?.bio || '')
+    setDistrict(user?.profile?.district || '')
+    setSaveError('')
+    setEditing(true)
+  }
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const nick = nickname.trim()
+    if (nick.length < 2 || nick.length > 30) {
+      setSaveError('Никнейм должен содержать от 2 до 30 символов')
+      return
+    }
+    if (!/^[a-zA-Zа-яА-Я0-9_-]+$/.test(nick)) {
+      setSaveError('Ник может содержать только буквы, цифры, дефис и подчёркивание')
+      return
+    }
+    setSaving(true)
+    setSaveError('')
+    try {
+      await api.patch('/users/me/profile', { nickname: nick, bio, district })
+      await refreshUser()
+      setEditing(false)
+    } catch (err) {
+      const errObj = (err || {}) as {
+        code?: string
+        message?: string
+        details?: Array<{ field?: string; message?: string }>
+      }
+      if (errObj.code === 'NICKNAME_TAKEN') {
+        setSaveError('Этот ник уже занят')
+      } else if (errObj.code === 'VALIDATION_ERROR' && errObj.details?.[0]?.message) {
+        setSaveError(errObj.details[0].message)
+      } else {
+        setSaveError(errObj.message || 'Не удалось сохранить профиль')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (loading) {
@@ -113,26 +162,99 @@ export default function ProfilePage() {
 
         {/* Карточка профиля */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center gap-4 mb-4">
-            {user.profile?.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.profile.avatarUrl}
-                alt="Аватар"
-                className="w-16 h-16 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center text-2xl font-bold text-white">
-                {initial}
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-4">
+              {user.profile?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.profile.avatarUrl}
+                  alt="Аватар"
+                  className="w-16 h-16 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center text-2xl font-bold text-white">
+                  {initial}
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-semibold">{user.profile?.nickname || 'Без имени'}</h2>
+                <p className="text-sm text-gray-500">{user.email}</p>
               </div>
-            )}
-            <div>
-              <h2 className="text-xl font-semibold">{user.profile?.nickname || 'Без имени'}</h2>
-              <p className="text-sm text-gray-500">{user.email}</p>
             </div>
+            {!editing && (
+              <button
+                type="button"
+                onClick={startEditing}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm shrink-0"
+              >
+                Редактировать профиль
+              </button>
+            )}
           </div>
 
-          <dl className="space-y-2 text-sm">
+          {editing ? (
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              {saveError && (
+                <div className="p-3 bg-red-50 text-red-700 text-sm rounded">{saveError}</div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="edit-nickname">
+                  Никнейм
+                </label>
+                <input
+                  id="edit-nickname"
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  maxLength={30}
+                  className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="edit-bio">
+                  Био
+                </label>
+                <textarea
+                  id="edit-bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="edit-district">
+                  Район
+                </label>
+                <input
+                  id="edit-district"
+                  type="text"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  maxLength={100}
+                  className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {saving ? 'Сохраняем...' : 'Сохранить'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          ) : (
+            <dl className="space-y-2 text-sm">
             {user.profile?.bio && (
               <div>
                 <dt className="font-medium text-gray-600">Bio</dt>
@@ -156,6 +278,7 @@ export default function ProfilePage() {
               </dd>
             </div>
           </dl>
+          )}
         </div>
 
         {/* Мои события */}
