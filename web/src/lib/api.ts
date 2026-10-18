@@ -56,11 +56,14 @@ async function rawFetch<T = unknown>(
   url: string,
   options: RequestInit = {},
 ): Promise<{ response: Response; data: T }> {
+  // Для multipart/form-data НЕ задаём Content-Type: браузер сам проставит
+  // правильный boundary. Иначе загрузка файлов ломается.
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
     credentials: 'include', // ← критично для httpOnly cookies
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
   })
@@ -157,7 +160,11 @@ async function request<T>(url: string, options: RequestInit = {}, retried = fals
 export const api = {
   get: <T>(url: string) => request<T>(url, { method: 'GET' }),
   post: <T>(url: string, body?: unknown) =>
-    request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
+    request<T>(url, {
+      method: 'POST',
+      body:
+        typeof FormData !== 'undefined' && body instanceof FormData ? body : JSON.stringify(body),
+    }),
   patch: <T>(url: string, body?: unknown) =>
     request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }),

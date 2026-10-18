@@ -72,4 +72,30 @@ export class UsersService {
       isVerified: updated.isVerified,
     }
   }
+
+  // Текущий avatarUrl (нужен, чтобы удалить старый файл при загрузке нового)
+  async getAvatarUrl(userId: string): Promise<string | null> {
+    const p = await this.prisma.profile.findUnique({
+      where: { userId },
+      select: { avatarUrl: true },
+    })
+    return p?.avatarUrl ?? null
+  }
+
+  // Обновить avatarUrl профиля и вернуть публичный профиль
+  async setAvatar(userId: string, avatarUrl: string) {
+    const updated = await this.prisma.profile.update({
+      where: { userId },
+      data: { avatarUrl },
+    })
+    return {
+      id: userId,
+      nickname: updated.nickname,
+      bio: updated.bio,
+      avatarUrl: updated.avatarUrl,
+      district: updated.district,
+      trustScore: updated.trustScore,
+      isVerified: updated.isVerified,
+    }
+  }
 }

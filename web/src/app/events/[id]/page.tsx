@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import Avatar from '@/components/Avatar'
 
 type EventDetail = {
   id: string
@@ -23,6 +24,7 @@ type EventDetail = {
     email: string
     profile?: {
       nickname?: string | null
+      avatarUrl?: string | null
       bio?: string | null
       district?: string | null
       trustScore: number
@@ -346,11 +348,14 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
         <div className="mt-6 p-6 bg-white rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3">Организатор</h2>
-          <p className="text-gray-700 font-medium">
-            <Link href={`/users/${event.host.id}`} className="text-blue-600 hover:underline">
-              {event.host.profile?.nickname || 'Без имени'}
-            </Link>
-          </p>
+          <div className="flex items-center gap-3">
+            <Avatar url={event.host.profile?.avatarUrl} name={event.host.profile?.nickname} />
+            <p className="text-gray-700 font-medium">
+              <Link href={`/users/${event.host.id}`} className="text-blue-600 hover:underline">
+                {event.host.profile?.nickname || 'Без имени'}
+              </Link>
+            </p>
+          </div>
           {event.host.email && <p className="text-sm text-gray-500">{event.host.email}</p>}
         </div>
 
@@ -368,21 +373,9 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             <ul className="space-y-3">
               {guests.map((g) => {
                 const nickname = g.user.profile?.nickname || 'Без имени'
-                const initial = nickname.charAt(0).toUpperCase() || '?'
                 return (
                   <li key={g.id} className="flex items-center gap-3">
-                    {g.user.profile?.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={g.user.profile.avatarUrl}
-                        alt={nickname}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-white">
-                        {initial}
-                      </div>
-                    )}
+                    <Avatar url={g.user.profile?.avatarUrl} name={nickname} />
                     <Link href={`/users/${g.userId}`} className="text-blue-600 hover:underline">
                       {nickname}
                     </Link>
@@ -439,25 +432,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
               <ul className="space-y-4">
                 {rateable.map((g) => {
                   const nickname = g.user.profile?.nickname || 'Без имени'
-                  const initial = (nickname || '?').charAt(0).toUpperCase()
                   const isRated = ratedUsers.has(g.userId)
                   const isSubmitting = ratingSubmitting === g.userId
                   return (
                     <li key={g.id}>
                       <div className="flex items-center gap-3">
                         <Link href={`/users/${g.userId}`} className="flex items-center gap-3 text-blue-600 hover:underline">
-                          {g.user.profile?.avatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={g.user.profile.avatarUrl}
-                              alt={nickname}
-                              className="w-9 h-9 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-9 h-9 rounded-full bg-gray-300 flex items-center justify-center font-bold text-white">
-                              {initial}
-                            </div>
-                          )}
+                          <Avatar url={g.user.profile?.avatarUrl} name={nickname} size="w-9 h-9" />
                           <span className="font-medium">{nickname}</span>
                         </Link>
                         {isRated ? (

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import NotificationBell from '@/components/NotificationBell'
+import Avatar from '@/components/Avatar'
 
 type EventItem = {
   id: string
@@ -64,6 +65,11 @@ export default function ProfilePage() {
   const [rsvpsLoading, setRsvpsLoading] = useState(true)
   const [rsvpsError, setRsvpsError] = useState('')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
 
   // Middleware уже должен отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -137,6 +143,58 @@ export default function ProfilePage() {
     }
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setAvatarError('')
+    if (!file) {
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setAvatarError('Допустимы только JPEG, PNG и WebP')
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('Файл слишком большой (максимум 2MB)')
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      return
+    }
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
+
+  const handleAvatarUpload = async () => {
+    if (!avatarFile) return
+    setAvatarUploading(true)
+    setAvatarError('')
+    try {
+      const formData = new FormData()
+      formData.append('avatar', avatarFile)
+      await api.post('/users/me/avatar', formData)
+      await refreshUser()
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    } catch (err) {
+      const errObj = (err || {}) as { code?: string; message?: string }
+      const map: Record<string, string> = {
+        FILE_TOO_LARGE: 'Файл слишком большой (максимум 2MB)',
+        INVALID_FILE_TYPE: 'Допустимы только JPEG, PNG и WebP',
+      }
+      setAvatarError(
+        errObj.code
+          ? map[errObj.code] || 'Не удалось загрузить аватар'
+          : 'Не удалось загрузить аватар',
+      )
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   const startEditing = () => {
     setNickname(user?.profile?.nickname || '')
     setBio(user?.profile?.bio || '')
@@ -193,8 +251,6 @@ export default function ProfilePage() {
     return null
   }
 
-  const initial = (user.profile?.nickname || user.email || '?').charAt(0).toUpperCase()
-
   return (
     <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
       <div className="max-w-3xl mx-auto">
@@ -223,18 +279,7 @@ export default function ProfilePage() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-4">
-              {user.profile?.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.profile.avatarUrl}
-                  alt="Аватар"
-                  className="w-16 h-16 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center text-2xl font-bold text-white">
-                  {initial}
-                </div>
-              )}
+              <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-16 h-16" />
               <div>
                 <h2 className="text-xl font-semibold">{user.profile?.nickname || 'Без имени'}</h2>
                 <p className="text-sm text-gray-500">{user.email}</p>
@@ -338,6 +383,49 @@ export default function ProfilePage() {
             </div>
           </dl>
           )}
+        </div>
+
+        {/* Аватар */}
+        <div className="mt-6 p-6 bg-white rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-3">Аватар</h2>
+          {avatarError && (
+            <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{avatarError}</div>
+          )}
+          <div className="flex items-center gap-4">
+            {avatarPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarPreview} alt="Превью аватара" className="w-16 h-16 rounded-full object-cover" />
+            ) : (
+              <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-16 h-16" />
+            )}
+            <div className="flex flex-col gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-sm font-medium transition"
+              >
+                Загрузить новый аватар
+              </button>
+              {avatarFile && (
+                <button
+                  type="button"
+                  onClick={handleAvatarUpload}
+                  disabled={avatarUploading}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {avatarUploading ? 'Загружаем...' : 'Сохранить'}
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">JPEG, PNG или WebP, до 2MB</p>
         </div>
 
         {/* Мои события */}

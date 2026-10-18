@@ -3,6 +3,10 @@ import fastifyCookie from '@fastify/cookie'
 import fastifyFormbody from '@fastify/formbody'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyHelmet from '@fastify/helmet'
+import fastifyMultipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import path from 'node:path'
+import { mkdir } from 'node:fs/promises'
 import { ZodError } from 'zod'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
@@ -188,6 +192,19 @@ const start = async () => {
 
     // Body parser — необходим для request.body в Fastify v5
     await server.register(fastifyFormbody)
+
+    // Multipart для загрузки аватаров: только 1 файл, максимум 2MB
+    await server.register(fastifyMultipart, {
+      limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+    })
+
+    // Статика: раздача загруженных файлов (GET /uploads/*)
+    const uploadsRoot = path.resolve(process.cwd(), 'uploads')
+    await mkdir(path.join(uploadsRoot, 'avatars'), { recursive: true })
+    await server.register(fastifyStatic, {
+      root: uploadsRoot,
+      prefix: '/uploads/',
+    })
 
     // Rate limiting: глобально 100 запросов/мин на IP (in-memory).
     // На auth-роутах лимиты строже (см. modules/auth/routes.ts).

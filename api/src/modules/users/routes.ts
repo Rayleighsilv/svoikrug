@@ -8,4 +8,5 @@ export function userRoutes(fastify: FastifyInstance, handler: UsersHandler) {
     { preHandler: [fastify.authenticate] },
     handler.updateProfile.bind(handler),
   )
+  fastify.post('/users/me/avatar', { preHandler: [fastify.authenticate] }, handler.uploadAvatar.bind(handler))
 }

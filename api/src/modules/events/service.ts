@@ -65,7 +65,7 @@ export class EventService {
         ],
       },
       include: {
-        host: { select: { id: true, profile: { select: { nickname: true } } } },
+        host: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
         _count: { select: { guests: true } },
       },
       orderBy: { startsAt: 'asc' },

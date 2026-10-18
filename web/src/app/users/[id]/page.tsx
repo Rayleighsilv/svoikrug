@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import Avatar from '@/components/Avatar'
 
 type Profile = {
   id: string
@@ -36,19 +37,6 @@ const FOLLOW_ERRORS: Record<string, string> = {
   ALREADY_FOLLOWING: 'Вы уже подписаны на этого пользователя.',
   CANNOT_FOLLOW_SELF: 'Нельзя подписаться на себя.',
   NOT_FOLLOWING: 'Вы не подписаны на этого пользователя.',
-}
-
-function Avatar({ url, name, size = 'w-10 h-10' }: { url?: string | null; name?: string | null; size?: string }) {
-  const initial = (name || '?').charAt(0).toUpperCase()
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={name || 'Аватар'} className={`${size} rounded-full object-cover`} />
-  }
-  return (
-    <div className={`${size} rounded-full bg-gray-300 flex items-center justify-center font-bold text-white`}>
-      {initial}
-    </div>
-  )
 }
 
 export default function UserProfilePage({ params }: { params: { id: string } }) {

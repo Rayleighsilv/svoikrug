@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import NotificationBell from '@/components/NotificationBell'
+import Avatar from '@/components/Avatar'
 
 type EventItem = {
   id: string
@@ -15,7 +16,7 @@ type EventItem = {
   maxGuests?: number | null
   host: {
     id: string
-    profile?: { nickname: string } | null
+    profile?: { nickname: string; avatarUrl?: string | null } | null
   }
   _count: { guests: number }
 }
@@ -131,6 +132,7 @@ export default function Home() {
               (user ? (
                 <>
                   <NotificationBell />
+                  <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-8 h-8" />
                   <span className="text-gray-700 font-medium">
                     {user.profile?.nickname || user.email}
                   </span>
@@ -259,12 +261,19 @@ export default function Home() {
                       <h2 className="text-lg font-semibold text-gray-900">{ev.title}</h2>
                       {ev.theme && <p className="text-sm text-gray-500 mt-0.5">Тема: {ev.theme}</p>}
                       <p className="text-sm text-gray-600 mt-2">🕒 {formatDateTime(ev.startsAt)}</p>
-                      <p className="text-sm text-gray-600">
-                        👤 Хост:{' '}
-                        <Link href={`/users/${ev.host.id}`} className="text-blue-600 hover:underline">
-                          {ev.host.profile?.nickname || 'Без имени'}
-                        </Link>
-                      </p>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Avatar
+                          url={ev.host.profile?.avatarUrl}
+                          name={ev.host.profile?.nickname}
+                          size="w-6 h-6"
+                        />
+                        <span>
+                          👤 Хост:{' '}
+                          <Link href={`/users/${ev.host.id}`} className="text-blue-600 hover:underline">
+                            {ev.host.profile?.nickname || 'Без имени'}
+                          </Link>
+                        </span>
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span className="text-sm font-medium text-gray-700">
