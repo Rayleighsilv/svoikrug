@@ -83,4 +83,13 @@ export class RsvpHandler {
     const guests = await this.service.markAttendance(id, hostId, parsedBody.data.userIds)
     return { success: true, guests }
   }
+
+  // GET /users/me/rsvps — записи текущего пользователя
+  async myRsvps(request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) {
+    const scope = request.query.scope === 'past' ? 'past' : 'upcoming'
+    const userId = request.userId!
+
+    const rsvps = await this.service.listMyRsvps(userId, scope)
+    return { success: true, rsvps }
+  }
 }

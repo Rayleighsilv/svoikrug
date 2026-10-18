@@ -6,4 +6,5 @@ export function rsvpRoutes(fastify: FastifyInstance, handler: RsvpHandler) {
   fastify.delete<{ Params: { id: string } }>('/events/:id/rsvp', { preHandler: [fastify.authenticate] }, handler.cancel.bind(handler))
   fastify.get<{ Params: { id: string } }>('/events/:id/guests', handler.listGuests.bind(handler))
   fastify.post<{ Params: { id: string }; Body: { userIds?: string[] } }>('/events/:id/mark-attendance', { preHandler: [fastify.authenticate] }, handler.markAttendance.bind(handler))
+  fastify.get<{ Querystring: { scope?: string } }>('/users/me/rsvps', { preHandler: [fastify.authenticate] }, handler.myRsvps.bind(handler))
 }

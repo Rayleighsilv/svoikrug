@@ -1,4 +1,4 @@
-import { PrismaClient, GuestStatus } from '@prisma/client'
+import { PrismaClient, GuestStatus, EventStatus } from '@prisma/client'
 import { AppError } from '../../common/errors'
 
 export class RsvpService {
@@ -106,5 +106,64 @@ export class RsvpService {
     }
 
     return this.prisma.eventGuest.findMany({ where: { eventId } })
+  }
+
+  // GET /users/me/rsvps — записи текущего пользователя (upcoming/past)
+  async listMyRsvps(userId: string, scope: 'upcoming' | 'past' = 'upcoming') {
+    const now = new Date()
+
+    if (scope === 'past') {
+      return this.prisma.eventGuest.findMany({
+        where: {
+          userId,
+          status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+          OR: [
+            { event: { startsAt: { lte: now } } },
+            { event: { status: 'archived' as EventStatus } },
+          ],
+        },
+        include: {
+          event: {
+            select: {
+              id: true,
+              title: true,
+              theme: true,
+              startsAt: true,
+              status: true,
+              maxGuests: true,
+              host: { select: { id: true, profile: { select: { nickname: true } } } },
+              _count: { select: { guests: true } },
+            },
+          },
+        },
+        orderBy: { event: { startsAt: 'desc' } },
+      })
+    }
+
+    return this.prisma.eventGuest.findMany({
+      where: {
+        userId,
+        status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+        event: {
+          startsAt: { gt: now },
+          status: { not: 'archived' as EventStatus },
+        },
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            title: true,
+            theme: true,
+            startsAt: true,
+            status: true,
+            maxGuests: true,
+            host: { select: { id: true, profile: { select: { nickname: true } } } },
+            _count: { select: { guests: true } },
+          },
+        },
+      },
+      orderBy: { event: { startsAt: 'asc' } },
+    })
   }
 }

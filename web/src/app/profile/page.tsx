@@ -17,6 +17,24 @@ type EventItem = {
   _count: { guests: number }
 }
 
+type RsvpItem = {
+  id: string
+  eventId: string
+  userId: string
+  status: string
+  joinedAt: string
+  event: {
+    id: string
+    title: string
+    theme?: string | null
+    startsAt: string
+    status: string
+    maxGuests?: number | null
+    host: { id: string; profile?: { nickname: string } | null }
+    _count: { guests: number }
+  }
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
@@ -41,6 +59,11 @@ export default function ProfilePage() {
   const [district, setDistrict] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [myRsvps, setMyRsvps] = useState<RsvpItem[]>([])
+  const [rsvpsScope, setRsvpsScope] = useState<'upcoming' | 'past'>('upcoming')
+  const [rsvpsLoading, setRsvpsLoading] = useState(true)
+  const [rsvpsError, setRsvpsError] = useState('')
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
 
   // Middleware уже должен отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -73,9 +96,45 @@ export default function ProfilePage() {
     }
   }, [user])
 
+  // Загружаем «Мои записи» (upcoming/past).
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    setRsvpsLoading(true)
+    setRsvpsError('')
+    api
+      .get<{ success: boolean; rsvps: RsvpItem[] }>(`/users/me/rsvps?scope=${rsvpsScope}`)
+      .then((data) => {
+        if (!cancelled) setMyRsvps(data.rsvps || [])
+      })
+      .catch((err) => {
+        console.error('Ошибка загрузки записей:', err)
+        if (!cancelled) setRsvpsError('Не удалось загрузить записи. Попробуйте позже.')
+      })
+      .finally(() => {
+        if (!cancelled) setRsvpsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, rsvpsScope])
+
   const handleLogout = async () => {
     await logout()
     router.replace('/')
+  }
+
+  const handleCancelRsvp = async (rsvp: RsvpItem) => {
+    setCancelingId(rsvp.id)
+    setRsvpsError('')
+    try {
+      await api.delete(`/events/${rsvp.eventId}/rsvp`)
+      setMyRsvps((prev) => prev.filter((r) => r.id !== rsvp.id))
+    } catch {
+      setRsvpsError('Не удалось отменить запись. Попробуйте позже.')
+    } finally {
+      setCancelingId(null)
+    }
   }
 
   const startEditing = () => {
@@ -307,6 +366,86 @@ export default function ProfilePage() {
                   </Link>
                 </li>
               ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Я иду */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Я иду</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRsvpsScope('upcoming')}
+                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  rsvpsScope === 'upcoming' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+                }`}
+              >
+                Предстоящие
+              </button>
+              <button
+                onClick={() => setRsvpsScope('past')}
+                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  rsvpsScope === 'past' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+                }`}
+              >
+                Прошедшие
+              </button>
+            </div>
+          </div>
+
+          {rsvpsLoading ? (
+            <p className="text-gray-600">Загрузка записей...</p>
+          ) : rsvpsError ? (
+            <p className="text-red-600">{rsvpsError}</p>
+          ) : myRsvps.length === 0 ? (
+            <div className="p-6 text-center bg-white rounded-lg shadow">
+              <p className="text-gray-600">Вы пока ни на что не записаны</p>
+              <Link href="/" className="mt-3 inline-block text-blue-600 hover:underline">
+                Смотреть события
+              </Link>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {myRsvps.map((r) => {
+                const canCancel =
+                  rsvpsScope === 'upcoming' && r.event.status === 'published' && r.status === 'approved'
+                const badge = r.status === 'attended' ? 'Присутствовал' : 'Записан'
+                return (
+                  <li key={r.id} className="p-4 bg-white rounded-lg shadow">
+                    <Link
+                      href={`/events/${r.event.id}`}
+                      className="font-semibold text-gray-900 hover:underline"
+                    >
+                      {r.event.title}
+                    </Link>
+                    <div className="text-sm text-gray-600 mt-1">🕒 {formatDate(r.event.startsAt)}</div>
+                    <div className="text-sm text-gray-600">
+                      Хост:{' '}
+                      <Link
+                        href={`/users/${r.event.host.id}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {r.event.host.profile?.nickname || 'Без имени'}
+                      </Link>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        {badge}
+                      </span>
+                      {canCancel && (
+                        <button
+                          onClick={() => handleCancelRsvp(r)}
+                          disabled={cancelingId === r.id}
+                          className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-60"
+                        >
+                          {cancelingId === r.id ? 'Отменяем...' : 'Отменить запись'}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
