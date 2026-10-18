@@ -29,19 +29,39 @@ export class EventService {
     })
   }
 
-  async listEvents(filters?: { status?: string; district?: string; limit?: number }) {
-    const { status, district, limit = 20 } = filters || {}
+  async listEvents(filters?: {
+    status?: string
+    district?: string
+    theme?: string
+    search?: string
+    limit?: number
+  }) {
+    const { status, district, theme, search, limit = 20 } = filters || {}
 
     // Валидация статуса: только допустимые значения передаются в Prisma
     const safeStatus = status && (VALID_EVENT_STATUSES as readonly string[]).includes(status)
       ? (status as EventStatus)
       : undefined
 
+    const trimmedSearch = search?.trim() || undefined
+
+    // Если задан поиск без явного статуса — ищем только среди опубликованных.
+    const effectiveStatus = safeStatus ?? (trimmedSearch ? ('published' as EventStatus) : undefined)
+
     return this.prisma.event.findMany({
       where: {
         AND: [
-          safeStatus ? { status: safeStatus } : {},
+          effectiveStatus ? { status: effectiveStatus } : {},
           district ? { host: { profile: { district } } } : {},
+          theme ? { theme } : {},
+          trimmedSearch
+            ? {
+                OR: [
+                  { title: { contains: trimmedSearch, mode: 'insensitive' } },
+                  { description: { contains: trimmedSearch, mode: 'insensitive' } },
+                ],
+              }
+            : {},
         ],
       },
       include: {

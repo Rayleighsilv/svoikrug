@@ -37,6 +37,8 @@ function freeSpots(event: EventItem): number | null {
   return Math.max(event.maxGuests - event._count.guests, 0)
 }
 
+const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
+
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth()
   const router = useRouter()
@@ -46,6 +48,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [activeFeed, setActiveFeed] = useState<'all' | 'following'>('all')
   const [followingCount, setFollowingCount] = useState(0)
+  const [search, setSearch] = useState('')
+  const [theme, setTheme] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Дебаунс поискового ввода (~350 мс), чтобы не дёргать API на каждый символ.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     if (activeFeed === 'following' && !user) {
@@ -78,8 +89,12 @@ export default function Home() {
           if (!cancelled) setLoading(false)
         })
     } else {
+      const params = new URLSearchParams({ status: 'published' })
+      const q = debouncedSearch.trim()
+      if (q) params.set('search', q)
+      if (theme) params.set('theme', theme)
       api
-        .get<{ success: boolean; events: EventItem[] }>('/events?status=published')
+        .get<{ success: boolean; events: EventItem[] }>(`/events?${params.toString()}`)
         .then((data) => {
           if (!cancelled) setEvents(data.events || [])
         })
@@ -95,7 +110,7 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [activeFeed, user])
+  }, [activeFeed, user, debouncedSearch, theme])
 
   const handleLogout = async () => {
     await logout()
@@ -173,6 +188,30 @@ export default function Home() {
           </button>
         </div>
 
+        {activeFeed === 'all' && (
+          <div className="flex gap-3 mb-6">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по названию или описанию..."
+              className="flex-1 p-2 border border-gray-300 rounded text-gray-900 placeholder:text-gray-400"
+            />
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              className="p-2 border border-gray-300 rounded text-gray-900"
+            >
+              <option value="">Все тематики</option>
+              {THEMES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-gray-600">Загрузка событий...</p>
         ) : error ? (
@@ -200,6 +239,10 @@ export default function Home() {
             ) : (
               <p className="text-gray-600">Пока нет событий от тех, на кого вы подписаны.</p>
             )
+          ) : search.trim() || theme ? (
+            <div className="p-10 text-center bg-white rounded-lg shadow">
+              <p className="text-gray-600 text-lg">Ничего не найдено по вашему запросу</p>
+            </div>
           ) : (
             <div className="p-10 text-center bg-white rounded-lg shadow">
               <p className="text-gray-600 text-lg">Пока нет активных сборов. Будьте первым!</p>

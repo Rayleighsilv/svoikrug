@@ -35,7 +35,12 @@ export class EventHandler {
   }
 
   // GET /events — список событий с фильтрами
-  async list(request: FastifyRequest<{ Querystring: { status?: string; district?: string; limit?: string } }>, reply: FastifyReply) {
+  async list(
+    request: FastifyRequest<{
+      Querystring: { status?: string; district?: string; theme?: string; search?: string; limit?: string }
+    }>,
+    reply: FastifyReply,
+  ) {
     const limitRaw = request.query.limit
     const limit = limitRaw ? Number(limitRaw) : undefined
     if (limitRaw && (isNaN(limit ?? NaN) || limit! <= 0)) {
@@ -48,6 +53,8 @@ export class EventHandler {
     const filters = {
       status: request.query.status,
       district: request.query.district,
+      theme: request.query.theme,
+      search: request.query.search,
       limit: limit ?? undefined,
     }
     return { success: true, events: await this.service.listEvents(filters) }
