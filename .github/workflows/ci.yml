@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only token: CI only checks the code.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Prisma's postinstall `generate` only needs a well-formed URL;
+      # nothing connects to a database during CI.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            web/package-lock.json
+
+      # ── API ────────────────────────────────────────────────
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Lint API
+        working-directory: api
+        run: npm run lint
+
+      - name: Typecheck API
+        working-directory: api
+        run: npx tsc --noEmit
+
+      # ── Web ────────────────────────────────────────────────
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Typecheck web
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: Build web
+        working-directory: web
+        run: npm run build
+
+      # ── Status ─────────────────────────────────────────────
+      - name: Report success
+        if: success()
+        run: |
+          echo "✅ CI passed: lint, typecheck and build are clean."
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "❌ CI failed: see the failed step above."
