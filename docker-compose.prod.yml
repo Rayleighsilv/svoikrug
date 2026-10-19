@@ -1,0 +1,96 @@
+# ── Production stack ──────────────────────────────────────────
+# Builds the production images (api/Dockerfile, web/Dockerfile),
+# runs without source bind-mounts, and keeps PostgreSQL private to
+# the compose network (no host port for 5432).
+#
+# Usage:
+#   cp .env.example .env      # fill in strong secrets and URLs
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Required in .env (see .env.example):
+#   JWT_SECRET, COOKIE_SECRET, POSTGRES_PASSWORD, NEXT_PUBLIC_API_URL
+
+# Separate project name so prod and dev stacks do not share the
+# PostgreSQL data volume or network.
+name: svoikrug-prod
+
+services:
+  # ── PostgreSQL (internal only) ────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: svoikrug_prod_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-svoikrug}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-svoikrug_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-svoikrug}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - svoikrug_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-svoikrug} -d ${POSTGRES_DB:-svoikrug}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend: Fastify + Prisma ─────────────────────────────
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: svoikrug_prod_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-svoikrug}:${POSTGRES_PASSWORD:-svoikrug_secret}@db:5432/${POSTGRES_DB:-svoikrug}?schema=public
+      # The API refuses to start in production with missing/short/default secrets.
+      JWT_SECRET: ${JWT_SECRET:-}
+      COOKIE_SECRET: ${COOKIE_SECRET:-}
+    volumes:
+      # Persist uploaded avatars across container restarts.
+      - uploads_data:/app/uploads
+    ports:
+      - "${API_PORT:-4000}:4000"
+    networks:
+      - svoikrug_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend: Next.js standalone ──────────────────────────
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # Inlined into the browser bundle at build time — must be
+        # the publicly reachable API URL (e.g. https://svoikrug.ru).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    container_name: svoikrug_prod_frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    networks:
+      - svoikrug_net
+
+networks:
+  svoikrug_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  uploads_data:

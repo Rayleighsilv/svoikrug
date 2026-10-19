@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthService } from './service'
-import { registerSchema, loginSchema, refreshSchema } from './schema'
+import { registerSchema, loginSchema } from './schema'
 
 const COOKIE_OPTIONS = {
   httpOnly: true,

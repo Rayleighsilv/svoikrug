@@ -85,7 +85,7 @@ export class RsvpHandler {
   }
 
   // GET /users/me/rsvps — записи текущего пользователя
-  async myRsvps(request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) {
+  async myRsvps(request: FastifyRequest<{ Querystring: { scope?: string } }>, _reply: FastifyReply) {
     const scope = request.query.scope === 'past' ? 'past' : 'upcoming'
     const userId = request.userId!
 

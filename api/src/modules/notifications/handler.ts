@@ -39,14 +39,14 @@ export class NotificationHandler {
   }
 
   // POST /notifications/read-all
-  async markAllRead(request: FastifyRequest, reply: FastifyReply) {
+  async markAllRead(request: FastifyRequest, _reply: FastifyReply) {
     const userId = request.userId!
     const result = await this.service.markAllRead(userId)
     return result
   }
 
   // GET /notifications/unread-count
-  async unreadCount(request: FastifyRequest, reply: FastifyReply) {
+  async unreadCount(request: FastifyRequest, _reply: FastifyReply) {
     const userId = request.userId!
     const { count } = await this.service.unreadCount(userId)
     return { success: true, count }

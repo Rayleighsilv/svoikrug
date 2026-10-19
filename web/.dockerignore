@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+coverage
+
+# Never bake secrets or local env files into the image.
+.env
+.env.*
+!.env.example
+
+npm-debug.log*
+*.tsbuildinfo
+.git
+.gitignore
+Dockerfile.dev
+README.md
