@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import NotificationBell from '@/components/NotificationBell'
 import Avatar from '@/components/Avatar'
+import UserMenu from '@/components/UserMenu'
 
 type EventItem = {
   id: string
@@ -41,8 +41,7 @@ function freeSpots(event: EventItem): number | null {
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 
 export default function Home() {
-  const { user, loading: authLoading, logout } = useAuth()
-  const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
 
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -113,11 +112,6 @@ export default function Home() {
     }
   }, [activeFeed, user, debouncedSearch, theme])
 
-  const handleLogout = async () => {
-    await logout()
-    router.replace('/')
-  }
-
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
       {/* Шапка с навигацией */}
@@ -132,23 +126,7 @@ export default function Home() {
               (user ? (
                 <>
                   <NotificationBell />
-                  <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-8 h-8" />
-                  <span className="text-gray-700 font-medium">
-                    {user.profile?.nickname || user.email}
-                  </span>
-                  <Link href="/events/new" className="text-blue-600 hover:underline">
-                    Создать событие
-                  </Link>
-                  <Link href="/profile" className="text-blue-600 hover:underline">
-                    Профиль
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
-                  >
-                    Выйти
-                  </button>
+                  <UserMenu />
                 </>
               ) : (
                 <>
