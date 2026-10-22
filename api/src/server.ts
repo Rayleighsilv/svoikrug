@@ -46,7 +46,10 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const server = Fastify({ logger: true })
+// За Nginx/Docker-прокси реальный IP клиента приходит в X-Forwarded-For.
+// Доверяем только loopback и приватным сетям (в т.ч. Docker bridge), чтобы
+// rate-limit и логи видели IP клиента, а не IP прокси.
+const server = Fastify({ logger: true, trustProxy: 'loopback,uniquelocal' })
 
 // Проверяем, что DATABASE_URL задан перед созданием адаптера
 if (!process.env.DATABASE_URL) {
