@@ -103,6 +103,13 @@ export default function NewEventPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
       <div className="max-w-2xl mx-auto">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="mb-4 text-blue-600 hover:underline"
+        >
+          ← К событиям
+        </button>
         <h1 className="text-2xl font-bold mb-6">Создать событие</h1>
 
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow space-y-5" noValidate>
@@ -205,13 +212,22 @@ export default function NewEventPage() {
             <div className="p-3 bg-red-50 text-red-700 text-sm rounded">{formError}</div>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
-          >
-            {submitting ? 'Создаём событие...' : 'Создать событие'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+            >
+              {submitting ? 'Создаём событие...' : 'Создать событие'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
+            >
+              Отмена
+            </button>
+          </div>
         </form>
       </div>
     </main>
