@@ -4,7 +4,7 @@ export class FeedService {
   constructor(private prisma: PrismaClient) {}
 
   // GET /feed/events — опубликованные события от тех, на кого подписан пользователь
-  async getFeedForUser(followerId: string, limit = 20) {
+  async getFeedForUser(followerId: string, limit = 20, city?: string) {
     const subs = await this.prisma.subscription.findMany({
       where: { followerId },
       select: { followingId: true },
@@ -17,6 +17,7 @@ export class FeedService {
       where: {
         status: 'published',
         hostId: { in: hostIds },
+        ...(city ? { city } : {}),
       },
       include: {
         host: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },

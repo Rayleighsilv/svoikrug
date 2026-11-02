@@ -16,6 +16,7 @@ export class UsersService {
             bio: true,
             avatarUrl: true,
             district: true,
+            city: true,
             trustScore: true,
             isVerified: true,
           },
@@ -32,6 +33,7 @@ export class UsersService {
       bio: p?.bio ?? null,
       avatarUrl: p?.avatarUrl ?? null,
       district: p?.district ?? null,
+      city: p?.city ?? null,
       trustScore: p?.trustScore ?? 0,
       isVerified: p?.isVerified ?? false,
     }
@@ -40,7 +42,7 @@ export class UsersService {
   // PATCH /users/me/profile — обновление своего профиля
   async updateMyProfile(
     userId: string,
-    input: { nickname?: string; bio?: string; district?: string; avatarUrl?: string },
+    input: { nickname?: string; bio?: string; district?: string; city?: string; avatarUrl?: string },
   ) {
     const profile = await this.prisma.profile.findUnique({ where: { userId } })
     if (!profile) {
@@ -55,10 +57,18 @@ export class UsersService {
       }
     }
 
-    const data: { nickname?: string; bio?: string; district?: string; avatarUrl?: string } = {}
+    const data: {
+      nickname?: string
+      bio?: string
+      district?: string
+      city?: string | null
+      avatarUrl?: string
+    } = {}
     if (input.nickname !== undefined) data.nickname = input.nickname
     if (input.bio !== undefined) data.bio = input.bio
     if (input.district !== undefined) data.district = input.district
+    // Пустой город = очистить значение.
+    if (input.city !== undefined) data.city = input.city || null
     if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl
 
     const updated = await this.prisma.profile.update({ where: { userId }, data })
@@ -68,6 +78,7 @@ export class UsersService {
       bio: updated.bio,
       avatarUrl: updated.avatarUrl,
       district: updated.district,
+      city: updated.city,
       trustScore: updated.trustScore,
       isVerified: updated.isVerified,
     }
@@ -82,8 +93,8 @@ export class UsersService {
     return p?.avatarUrl ?? null
   }
 
-  // Обновить avatarUrl профиля и вернуть публичный профиль
-  async setAvatar(userId: string, avatarUrl: string) {
+  // Обновить avatarUrl профиля (null — удалить аватар) и вернуть профиль
+  async setAvatar(userId: string, avatarUrl: string | null) {
     const updated = await this.prisma.profile.update({
       where: { userId },
       data: { avatarUrl },
@@ -94,6 +105,7 @@ export class UsersService {
       bio: updated.bio,
       avatarUrl: updated.avatarUrl,
       district: updated.district,
+      city: updated.city,
       trustScore: updated.trustScore,
       isVerified: updated.isVerified,
     }

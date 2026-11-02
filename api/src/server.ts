@@ -27,6 +27,9 @@ import { ratingRoutes } from './modules/ratings/routes'
 import { FeedService } from './modules/feed/service'
 import { FeedHandler } from './modules/feed/handler'
 import { feedRoutes } from './modules/feed/routes'
+import { CitiesService } from './modules/cities/service'
+import { CitiesHandler } from './modules/cities/handler'
+import { cityRoutes } from './modules/cities/routes'
 import { NotificationService } from './modules/notifications/service'
 import { NotificationHandler } from './modules/notifications/handler'
 import { notificationRoutes } from './modules/notifications/routes'
@@ -276,6 +279,11 @@ const start = async () => {
     const notificationService = new NotificationService(prisma)
     const notificationHandler = new NotificationHandler(notificationService)
     notificationRoutes(server, notificationHandler)
+
+    // ─── Подсказки городов ────────────────────────────────────
+    const citiesService = new CitiesService(prisma)
+    const citiesHandler = new CitiesHandler(citiesService)
+    cityRoutes(server, citiesHandler)
 
     // ─── Health check ─────────────────────────────────────────
 

@@ -62,6 +62,7 @@ model Profile {
   bio         String? @map("bio")
   avatarUrl   String? @map("avatar_url")
   district    String? @map("district")
+  city        String? @map("city")
   trustScore  Float   @default(0) @map("trust_score")
   isVerified  Boolean @default(false) @map("is_verified")
 
@@ -77,6 +78,7 @@ model Event {
   title       String      @map("title")
   description String?     @map("description")
   theme       String?     @map("theme")
+  city        String?     @map("city")
   startsAt    DateTime    @map("starts_at")
   endsAt      DateTime?   @map("ends_at")
   maxGuests   Int?        @map("max_guests")
@@ -92,6 +94,7 @@ model Event {
   @@map("events")
   @@index([hostId])
   @@index([status, startsAt])
+  @@index([city])
   @@index([lat, lng])
 }
 

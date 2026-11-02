@@ -1,6 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { EventService } from './service'
-import { createEventSchema, updateEventSchema, eventIdSchema } from './schema'
+import {
+  createEventSchema,
+  updateEventSchema,
+  eventIdSchema,
+  listEventsQuerySchema,
+} from './schema'
 
 export class EventHandler {
   constructor(private service: EventService) {}
@@ -37,27 +42,35 @@ export class EventHandler {
   // GET /events — список событий с фильтрами
   async list(
     request: FastifyRequest<{
-      Querystring: { status?: string; district?: string; theme?: string; search?: string; limit?: string }
+      Querystring: {
+        status?: string
+        district?: string
+        theme?: string
+        search?: string
+        limit?: string
+        city?: string
+      }
     }>,
     reply: FastifyReply,
   ) {
-    const limitRaw = request.query.limit
-    const limit = limitRaw ? Number(limitRaw) : undefined
-    if (limitRaw && (isNaN(limit ?? NaN) || limit! <= 0)) {
+    const parsed = listEventsQuerySchema.safeParse(request.query)
+    if (!parsed.success) {
       return reply.code(400).send({
         error: true,
-        message: 'Invalid limit parameter: must be a positive integer',
+        message: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
       })
     }
 
-    const filters = {
-      status: request.query.status,
-      district: request.query.district,
-      theme: request.query.theme,
-      search: request.query.search,
-      limit: limit ?? undefined,
+    const { city, ...filters } = parsed.data
+    return {
+      success: true,
+      events: await this.service.listEvents({ ...filters, city: city || undefined }),
     }
-    return { success: true, events: await this.service.listEvents(filters) }
   }
 
   // PATCH /events/:id — обновить событие

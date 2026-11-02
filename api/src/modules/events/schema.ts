@@ -1,11 +1,24 @@
 // api/src/modules/events/schema.ts
 import { z } from 'zod'
+import { normalizeCity } from '../../common/city'
+
+// Город нормализуем до проверки длины: "  a  " не должен проходить min(2).
+const citySchema = z
+  .string()
+  .transform(normalizeCity)
+  .pipe(
+    z
+      .string()
+      .min(2, 'City must be at least 2 characters')
+      .max(50, 'City must be at most 50 characters'),
+  )
 
 // 🔹 Схема создания события
 export const createEventSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().max(1000).optional(),
   theme: z.string().max(50).optional(),
+  city: citySchema,
   startsAt: z.string().datetime('Must be ISO 8601 format'), // "2026-06-15T18:00:00Z"
   endsAt: z.string().datetime().optional(),
   maxGuests: z.number().int().min(1).max(100).optional(),
@@ -26,6 +39,20 @@ export const updateEventSchema = createEventSchema
 // 🔹 Схема для параметров маршрута (валидация UUID в URL)
 export const eventIdSchema = z.object({
   id: z.string().uuid('Invalid event ID format'),
+})
+
+// 🔹 Query-схема списка событий (GET /events)
+export const listEventsQuerySchema = z.object({
+  status: z.string().optional(),
+  district: z.string().optional(),
+  theme: z.string().optional(),
+  search: z.string().optional(),
+  city: z
+    .string()
+    .transform(normalizeCity)
+    .pipe(z.string().max(50, 'City must be at most 50 characters'))
+    .optional(),
+  limit: z.coerce.number().int().positive('Limit must be a positive integer').optional(),
 })
 
 // 🔹 Экспортируем типы для TypeScript (автовывод из Zod-схем)

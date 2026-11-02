@@ -5,6 +5,17 @@ import path from 'node:path'
 import { UsersService } from './service'
 import { userIdSchema, updateProfileSchema } from './schema'
 
+// Удаляем файл аватара только если он лежит в нашей папке uploads.
+async function removeUploadedAvatar(avatarUrl: string | null) {
+  if (!avatarUrl || !avatarUrl.startsWith('/uploads/avatars/')) return
+  const dir = path.resolve(process.cwd(), 'uploads', 'avatars')
+  try {
+    await unlink(path.join(dir, path.basename(avatarUrl)))
+  } catch {
+    // файл мог отсутствовать — игнорируем
+  }
+}
+
 export class UsersHandler {
   constructor(private service: UsersService) {}
 
@@ -26,7 +37,9 @@ export class UsersHandler {
 
   // PATCH /users/me/profile — обновление своего профиля
   async updateProfile(
-    request: FastifyRequest<{ Body: { nickname?: string; bio?: string; district?: string; avatarUrl?: string } }>,
+    request: FastifyRequest<{
+      Body: { nickname?: string; bio?: string; district?: string; city?: string; avatarUrl?: string }
+    }>,
     reply: FastifyReply,
   ) {
     const parsed = updateProfileSchema.safeParse(request.body)
@@ -97,15 +110,18 @@ export class UsersHandler {
     const oldAvatarUrl = await this.service.getAvatarUrl(userId)
     const profile = await this.service.setAvatar(userId, `/uploads/avatars/${filename}`)
 
-    // Удаляем старый файл аватара, если он лежит в нашей папке uploads
-    if (oldAvatarUrl && oldAvatarUrl.startsWith('/uploads/avatars/')) {
-      const oldName = path.basename(oldAvatarUrl)
-      try {
-        await unlink(path.join(dir, oldName))
-      } catch {
-        // файл мог отсутствовать — игнорируем
-      }
-    }
+    await removeUploadedAvatar(oldAvatarUrl)
+
+    return { success: true, profile }
+  }
+
+  // DELETE /users/me/avatar — удалить аватар и его файл
+  async deleteAvatar(request: FastifyRequest, _reply: FastifyReply) {
+    const userId = request.userId!
+
+    const oldAvatarUrl = await this.service.getAvatarUrl(userId)
+    const profile = await this.service.setAvatar(userId, null)
+    await removeUploadedAvatar(oldAvatarUrl)
 
     return { success: true, profile }
   }

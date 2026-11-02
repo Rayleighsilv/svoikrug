@@ -34,9 +34,10 @@ export class EventService {
     district?: string
     theme?: string
     search?: string
+    city?: string
     limit?: number
   }) {
-    const { status, district, theme, search, limit = 20 } = filters || {}
+    const { status, district, theme, search, city, limit = 20 } = filters || {}
 
     // Валидация статуса: только допустимые значения передаются в Prisma
     const safeStatus = status && (VALID_EVENT_STATUSES as readonly string[]).includes(status)
@@ -54,6 +55,7 @@ export class EventService {
           effectiveStatus ? { status: effectiveStatus } : {},
           district ? { host: { profile: { district } } } : {},
           theme ? { theme } : {},
+          city ? { city } : {},
           trimmedSearch
             ? {
                 OR: [
