@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { resolveAvatarUrl } from '@/lib/avatar'
 
 export default function Avatar({
@@ -13,10 +14,23 @@ export default function Avatar({
 }) {
   const resolved = resolveAvatarUrl(url)
   const initial = (name || '?').charAt(0).toUpperCase()
+  const [failed, setFailed] = useState(false)
 
-  if (resolved) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={resolved} alt={name || 'Аватар'} className={`${size} rounded-full object-cover`} />
+  // Если внешний URL не загрузился — показываем инициал.
+  useEffect(() => {
+    setFailed(false)
+  }, [resolved])
+
+  if (resolved && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={resolved}
+        alt={name || 'Аватар'}
+        onError={() => setFailed(true)}
+        className={`${size} rounded-full object-cover`}
+      />
+    )
   }
 
   return (
