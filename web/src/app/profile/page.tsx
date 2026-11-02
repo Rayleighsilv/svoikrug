@@ -66,6 +66,7 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState('')
   const [myRsvps, setMyRsvps] = useState<RsvpItem[]>([])
   const [rsvpsScope, setRsvpsScope] = useState<'upcoming' | 'past'>('upcoming')
+  const [myEventsScope, setMyEventsScope] = useState<'upcoming' | 'memories'>('upcoming')
   const [rsvpsLoading, setRsvpsLoading] = useState(true)
   const [rsvpsError, setRsvpsError] = useState('')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
@@ -83,7 +84,7 @@ export default function ProfilePage() {
     if (!user) return
     let cancelled = false
     api
-      .get<{ success: boolean; events: EventItem[] }>('/events')
+      .get<{ success: boolean; events: EventItem[] }>('/events?limit=200')
       .then((data) => {
         if (!cancelled) {
           const hosted = (data.events || []).filter((e) => e.hostId === user.id)
@@ -243,6 +244,15 @@ export default function ProfilePage() {
   if (!user) {
     return null
   }
+
+  const now = Date.now()
+  const upcomingMyEvents = myEvents.filter(
+    (event) => new Date(event.startsAt).getTime() >= now,
+  )
+  const pastMyEvents = myEvents.filter(
+    (event) => new Date(event.startsAt).getTime() < now,
+  )
+  const visibleMyEvents = myEventsScope === 'upcoming' ? upcomingMyEvents : pastMyEvents
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -407,15 +417,43 @@ export default function ProfilePage() {
 
         {/* Мои события */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Мои события</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Мои события</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMyEventsScope('upcoming')}
+                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  myEventsScope === 'upcoming'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 shadow'
+                }`}
+              >
+                Предстоящие
+              </button>
+              <button
+                onClick={() => setMyEventsScope('memories')}
+                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  myEventsScope === 'memories'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 shadow'
+                }`}
+              >
+                Воспоминания
+              </button>
+            </div>
+          </div>
 
           {eventsLoading ? (
             <p className="text-gray-600">Загрузка событий...</p>
-          ) : myEvents.length === 0 ? (
-            <p className="text-gray-600">Вы ещё не создали ни одного события</p>
+          ) : visibleMyEvents.length === 0 ? (
+            <p className="text-gray-600">
+              {myEventsScope === 'upcoming'
+                ? 'Вы ещё не создали ни одного предстоящего события'
+                : 'Воспоминаний пока нет'}
+            </p>
           ) : (
             <ul className="space-y-3">
-              {myEvents.map((ev) => (
+              {visibleMyEvents.map((ev) => (
                 <li key={ev.id}>
                   <Link
                     href={`/events/${ev.id}`}
@@ -455,7 +493,7 @@ export default function ProfilePage() {
                   rsvpsScope === 'past' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
                 }`}
               >
-                Прошедшие
+                Воспоминания
               </button>
             </div>
           </div>
@@ -466,7 +504,11 @@ export default function ProfilePage() {
             <p className="text-red-600">{rsvpsError}</p>
           ) : myRsvps.length === 0 ? (
             <div className="p-6 text-center bg-white rounded-lg shadow">
-              <p className="text-gray-600">Вы пока ни на что не записаны</p>
+              <p className="text-gray-600">
+                {rsvpsScope === 'past'
+                  ? 'Воспоминаний пока нет'
+                  : 'Вы пока ни на что не записаны'}
+              </p>
               <Link href="/" className="mt-3 inline-block text-blue-600 hover:underline">
                 Смотреть события
               </Link>
@@ -475,10 +517,18 @@ export default function ProfilePage() {
             <ul className="space-y-3">
               {myRsvps.map((r) => {
                 const canCancel =
-                  rsvpsScope === 'upcoming' && r.event.status === 'published' && r.status === 'approved'
-                const badge = r.status === 'attended' ? 'Присутствовал' : 'Записан'
+                  rsvpsScope === 'upcoming' &&
+                  r.event.status === 'published' &&
+                  (r.status === 'approved' || r.status === 'pending')
+                const badge =
+                  r.status === 'attended'
+                    ? 'Присутствовал'
+                    : r.status === 'pending'
+                      ? 'Заявка на рассмотрении'
+                      : 'Записан'
+                const cancelLabel = r.status === 'pending' ? 'Отменить заявку' : 'Отменить запись'
                 return (
-                  <li key={r.id} className="p-4 bg-white rounded-lg shadow">
+                  <li key={r.id} className="relative p-4 bg-white rounded-lg shadow">
                     <Link
                       href={`/events/${r.event.id}`}
                       className="font-semibold text-gray-900 hover:underline"
@@ -491,25 +541,36 @@ export default function ProfilePage() {
                       Хост:{' '}
                       <Link
                         href={`/users/${r.event.host.id}`}
-                        className="text-blue-600 hover:underline"
+                        className="relative z-10 text-blue-600 hover:underline"
                       >
                         {r.event.host.profile?.nickname || 'Без имени'}
                       </Link>
                     </div>
                     <div className="mt-3 flex items-center gap-3">
-                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                          r.status === 'pending'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}
+                      >
                         {badge}
                       </span>
                       {canCancel && (
                         <button
                           onClick={() => handleCancelRsvp(r)}
                           disabled={cancelingId === r.id}
-                          className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-60"
+                          className="relative z-10 px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-60"
                         >
-                          {cancelingId === r.id ? 'Отменяем...' : 'Отменить запись'}
+                          {cancelingId === r.id ? 'Отменяем...' : cancelLabel}
                         </button>
                       )}
                     </div>
+                    <Link
+                      href={`/events/${r.event.id}`}
+                      aria-label={`Открыть событие «${r.event.title}»`}
+                      className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    />
                   </li>
                 )
               })}

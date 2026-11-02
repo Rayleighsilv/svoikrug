@@ -39,6 +39,11 @@ function freeSpots(event: EventItem): number | null {
   return Math.max(event.maxGuests - event._count.guests, 0)
 }
 
+function isUpcoming(event: { startsAt: string }): boolean {
+  const startsAt = new Date(event.startsAt).getTime()
+  return !Number.isNaN(startsAt) && startsAt >= Date.now()
+}
+
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 
 export default function Home() {
@@ -75,9 +80,9 @@ export default function Home() {
     setError(null)
 
     if (activeFeed === 'following' && user) {
-      const feedParams = new URLSearchParams()
+      const feedParams = new URLSearchParams({ limit: '200' })
       if (city) feedParams.set('city', city)
-      const feedPath = feedParams.toString() ? `/feed/events?${feedParams}` : '/feed/events'
+      const feedPath = `/feed/events?${feedParams.toString()}`
 
       Promise.all([
         api.get<{ success: boolean; events: EventItem[] }>(feedPath),
@@ -85,7 +90,7 @@ export default function Home() {
       ])
         .then(([feed, follow]) => {
           if (!cancelled) {
-            setEvents(feed.events || [])
+            setEvents((feed.events || []).filter(isUpcoming))
             setFollowingCount((follow.users || []).length)
           }
         })
@@ -97,7 +102,7 @@ export default function Home() {
           if (!cancelled) setLoading(false)
         })
     } else {
-      const params = new URLSearchParams({ status: 'published' })
+      const params = new URLSearchParams({ status: 'published', limit: '200' })
       const q = debouncedSearch.trim()
       if (q) params.set('search', q)
       if (theme) params.set('theme', theme)
@@ -105,7 +110,7 @@ export default function Home() {
       api
         .get<{ success: boolean; events: EventItem[] }>(`/events?${params.toString()}`)
         .then((data) => {
-          if (!cancelled) setEvents(data.events || [])
+          if (!cancelled) setEvents((data.events || []).filter(isUpcoming))
         })
         .catch((err) => {
           console.error('Ошибка загрузки событий:', err)
@@ -233,7 +238,10 @@ export default function Home() {
             {events.map((ev) => {
               const spots = freeSpots(ev)
               return (
-                <li key={ev.id} className="p-5 bg-white rounded-lg shadow">
+                <li
+                  key={ev.id}
+                  className="relative p-5 bg-white rounded-lg shadow transition hover:shadow-md"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-lg font-semibold text-gray-900">{ev.title}</h2>
@@ -254,7 +262,10 @@ export default function Home() {
                         />
                         <span>
                           👤 Хост:{' '}
-                          <Link href={`/users/${ev.host.id}`} className="text-blue-600 hover:underline">
+                          <Link
+                            href={`/users/${ev.host.id}`}
+                            className="relative z-10 text-blue-600 hover:underline"
+                          >
                             {ev.host.profile?.nickname || 'Без имени'}
                           </Link>
                         </span>
@@ -270,6 +281,11 @@ export default function Home() {
                       </span>
                     </div>
                   </div>
+                  <Link
+                    href={`/events/${ev.id}`}
+                    aria-label={`Открыть событие «${ev.title}»`}
+                    className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  />
                 </li>
               )
             })}
