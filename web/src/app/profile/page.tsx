@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import NotificationBell from '@/components/NotificationBell'
-import Avatar from '@/components/Avatar'
+import ProfileAvatar from '@/components/ProfileAvatar'
 
 type EventItem = {
   id: string
@@ -65,11 +65,7 @@ export default function ProfilePage() {
   const [rsvpsLoading, setRsvpsLoading] = useState(true)
   const [rsvpsError, setRsvpsError] = useState('')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const [avatarUploading, setAvatarUploading] = useState(false)
-  const [avatarError, setAvatarError] = useState('')
+  const [copiedEmail, setCopiedEmail] = useState(false)
 
   // Middleware уже должен отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -125,6 +121,23 @@ export default function ProfilePage() {
     }
   }, [user, rsvpsScope])
 
+  // Показываем галочку «скопировано» пару секунд.
+  useEffect(() => {
+    if (!copiedEmail) return
+    const timer = setTimeout(() => setCopiedEmail(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copiedEmail])
+
+  const handleCopyEmail = async () => {
+    if (!user || !navigator.clipboard) return
+    try {
+      await navigator.clipboard.writeText(user.email)
+      setCopiedEmail(true)
+    } catch {
+      // clipboard может быть недоступен — молча игнорируем
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
     router.replace('/')
@@ -140,58 +153,6 @@ export default function ProfilePage() {
       setRsvpsError('Не удалось отменить запись. Попробуйте позже.')
     } finally {
       setCancelingId(null)
-    }
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    setAvatarError('')
-    if (!file) {
-      setAvatarFile(null)
-      setAvatarPreview(null)
-      return
-    }
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setAvatarError('Допустимы только JPEG, PNG и WebP')
-      setAvatarFile(null)
-      setAvatarPreview(null)
-      return
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setAvatarError('Файл слишком большой (максимум 2MB)')
-      setAvatarFile(null)
-      setAvatarPreview(null)
-      return
-    }
-    setAvatarFile(file)
-    setAvatarPreview(URL.createObjectURL(file))
-  }
-
-  const handleAvatarUpload = async () => {
-    if (!avatarFile) return
-    setAvatarUploading(true)
-    setAvatarError('')
-    try {
-      const formData = new FormData()
-      formData.append('avatar', avatarFile)
-      await api.post('/users/me/avatar', formData)
-      await refreshUser()
-      setAvatarFile(null)
-      setAvatarPreview(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    } catch (err) {
-      const errObj = (err || {}) as { code?: string; message?: string }
-      const map: Record<string, string> = {
-        FILE_TOO_LARGE: 'Файл слишком большой (максимум 2MB)',
-        INVALID_FILE_TYPE: 'Допустимы только JPEG, PNG и WebP',
-      }
-      setAvatarError(
-        errObj.code
-          ? map[errObj.code] || 'Не удалось загрузить аватар'
-          : 'Не удалось загрузить аватар',
-      )
-    } finally {
-      setAvatarUploading(false)
     }
   }
 
@@ -254,6 +215,20 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
       <div className="max-w-3xl mx-auto">
+        <Link
+          href="/"
+          className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+          К событиям
+        </Link>
+
         {/* Шапка: заголовок + действия */}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Профиль</h1>
@@ -277,19 +252,32 @@ export default function ProfilePage() {
 
         {/* Карточка профиля */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-4">
-              <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-16 h-16" />
-              <div>
-                <h2 className="text-xl font-semibold">{user.profile?.nickname || 'Без имени'}</h2>
-                <p className="text-sm text-gray-500">{user.email}</p>
+          <div className="mb-4 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <ProfileAvatar url={user.profile?.avatarUrl} name={user.profile?.nickname} />
+              <div className="min-w-0">
+                <h2 className="truncate text-2xl font-bold">
+                  {user.profile?.nickname || 'Без имени'}
+                </h2>
+                <div className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
+                  <span className="truncate">{user.email}</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyEmail}
+                    aria-label={copiedEmail ? 'Email скопирован' : 'Скопировать email'}
+                    title={copiedEmail ? 'Скопировано' : 'Скопировать email'}
+                    className="shrink-0 rounded p-0.5 text-gray-400 transition hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {copiedEmail ? <CheckIcon /> : <CopyIcon />}
+                  </button>
+                </div>
               </div>
             </div>
             {!editing && (
               <button
                 type="button"
                 onClick={startEditing}
-                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm shrink-0"
+                className="self-start rounded bg-blue-600 px-3 py-1.5 text-sm text-white transition hover:bg-blue-700"
               >
                 Редактировать профиль
               </button>
@@ -383,49 +371,6 @@ export default function ProfilePage() {
             </div>
           </dl>
           )}
-        </div>
-
-        {/* Аватар */}
-        <div className="mt-6 p-6 bg-white rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-3">Аватар</h2>
-          {avatarError && (
-            <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{avatarError}</div>
-          )}
-          <div className="flex items-center gap-4">
-            {avatarPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarPreview} alt="Превью аватара" className="w-16 h-16 rounded-full object-cover" />
-            ) : (
-              <Avatar url={user.profile?.avatarUrl} name={user.profile?.nickname} size="w-16 h-16" />
-            )}
-            <div className="flex flex-col gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-sm font-medium transition"
-              >
-                Загрузить новый аватар
-              </button>
-              {avatarFile && (
-                <button
-                  type="button"
-                  onClick={handleAvatarUpload}
-                  disabled={avatarUploading}
-                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {avatarUploading ? 'Загружаем...' : 'Сохранить'}
-                </button>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">JPEG, PNG или WebP, до 2MB</p>
         </div>
 
         {/* Мои события */}
@@ -539,5 +484,26 @@ export default function ProfilePage() {
         </div>
       </div>
     </main>
+  )
+}
+
+function CopyIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+      <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+        clipRule="evenodd"
+      />
+    </svg>
   )
 }

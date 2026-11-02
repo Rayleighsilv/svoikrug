@@ -57,13 +57,16 @@ async function rawFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<{ response: Response; data: T }> {
   // Для multipart/form-data НЕ задаём Content-Type: браузер сам проставит
-  // правильный boundary. Иначе загрузка файлов ломается.
+  // правильный boundary. Для запросов без тела (logout, follow, rsvp,
+  // read-all) тоже не ставим JSON-заголовок — иначе Fastify отвечает 400
+  // FST_ERR_CTP_EMPTY_JSON_BODY.
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const hasBody = options.body !== undefined && options.body !== null
   const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
     credentials: 'include', // ← критично для httpOnly cookies
     headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(isFormData || !hasBody ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
   })
