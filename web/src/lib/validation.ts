@@ -155,6 +155,7 @@ export type CreateEventErrors = {
   title?: string
   description?: string
   theme?: string
+  city?: string
   startsAt?: string
   maxGuests?: string
   form?: string
@@ -164,6 +165,7 @@ export function validateCreateEvent(input: {
   title: string
   description: string
   theme: string
+  city: string
   startsAt: string
   maxGuests: string
 }): CreateEventErrors {
@@ -184,6 +186,15 @@ export function validateCreateEvent(input: {
 
   if (input.theme && input.theme.length > 50) {
     errors.theme = 'Тематика должна быть не длиннее 50 символов'
+  }
+
+  const city = input.city.trim()
+  if (!city) {
+    errors.city = 'Укажите город'
+  } else if (city.length < 2) {
+    errors.city = 'Город должен содержать минимум 2 символа'
+  } else if (city.length > 50) {
+    errors.city = 'Город должен быть не длиннее 50 символов'
   }
 
   if (!input.startsAt) {

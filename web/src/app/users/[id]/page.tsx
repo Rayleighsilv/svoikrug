@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import Avatar from '@/components/Avatar'
+import Header from '@/components/Header'
 
 type Profile = {
   id: string
@@ -13,6 +14,7 @@ type Profile = {
   bio?: string | null
   avatarUrl?: string | null
   district?: string | null
+  city?: string | null
   trustScore: number
   isVerified: boolean
 }
@@ -160,28 +162,35 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
 
   if (loading || authLoading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900">
-        <p className="text-gray-500">Загрузка...</p>
+      <main className="min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <div className="flex items-center justify-center p-6">
+          <p className="text-gray-500">Загрузка...</p>
+        </div>
       </main>
     )
   }
 
   if (notFound || !profile) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-gray-900">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Пользователь не найден</h1>
-          <button onClick={() => router.replace('/')} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            На главную
-          </button>
+      <main className="min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <div className="flex items-center justify-center p-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Пользователь не найден</h1>
+            <button onClick={() => router.replace('/')} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+              На главную
+            </button>
+          </div>
         </div>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
-      <div className="max-w-3xl mx-auto">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <Header />
+      <div className="max-w-3xl mx-auto p-4 sm:p-6">
         <button onClick={() => router.back()} className="mb-4 text-blue-600 hover:underline">
           ← Назад
         </button>
@@ -192,6 +201,13 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
             <h1 className="text-2xl font-bold">{profile.nickname || 'Без имени'}</h1>
             {profile.bio && <p className="text-gray-700 mt-1">{profile.bio}</p>}
             {profile.district && <p className="text-sm text-gray-500 mt-1">Район: {profile.district}</p>}
+            {profile.city && (
+              <p className="mt-1">
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  📍 {profile.city}
+                </span>
+              </p>
+            )}
             <p className="text-sm text-gray-500 mt-1">Trust Score: {profile.trustScore}</p>
             <p className="text-sm text-gray-500 mt-1">{profile.isVerified ? 'Верифицирован' : 'Не верифицирован'}</p>
           </div>

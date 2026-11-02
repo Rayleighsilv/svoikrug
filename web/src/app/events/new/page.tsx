@@ -1,26 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
 import { validateCreateEvent, type CreateEventErrors } from '@/lib/validation'
+import CityInput from '@/components/CityInput'
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
-const KNOWN_FIELDS = ['title', 'description', 'theme', 'startsAt', 'maxGuests'] as const
+const KNOWN_FIELDS = ['title', 'description', 'theme', 'city', 'startsAt', 'maxGuests'] as const
 
 export default function NewEventPage() {
   const { user, loading } = useAuth()
+  const { city: selectedCity, ready: cityReady } = useCity()
   const router = useRouter()
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('')
+  const [city, setCity] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [maxGuests, setMaxGuests] = useState('')
   const [errors, setErrors] = useState<CreateEventErrors>({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const prefilledRef = useRef(false)
 
   // Middleware уже должен был отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -29,11 +34,18 @@ export default function NewEventPage() {
     }
   }, [loading, user, router])
 
+  // Предзаполняем город: выбранный в шапке, иначе город из профиля.
+  useEffect(() => {
+    if (prefilledRef.current || loading || !cityReady) return
+    setCity(selectedCity || user?.profile?.city || '')
+    prefilledRef.current = true
+  }, [loading, cityReady, selectedCity, user])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Клиентская валидация до отправки (сверена с createEventSchema)
-    const validation = validateCreateEvent({ title, description, theme, startsAt, maxGuests })
+    const validation = validateCreateEvent({ title, description, theme, city, startsAt, maxGuests })
     if (Object.keys(validation).length > 0) {
       setErrors(validation)
       return
@@ -48,6 +60,7 @@ export default function NewEventPage() {
         title: title.trim(),
         description: description.trim() || undefined,
         theme: theme || undefined,
+        city: city.trim(),
         // datetime-local → UTC ISO 8601 с часовым поясом
         startsAt: new Date(startsAt).toISOString(),
         maxGuests: maxGuests === '' ? undefined : Number(maxGuests),
@@ -141,6 +154,20 @@ export default function NewEventPage() {
               ))}
             </select>
             {errors.theme && <p className="mt-1 text-sm text-red-600">{errors.theme}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="city">
+              Город
+            </label>
+            <CityInput
+              id="city"
+              value={city}
+              onChange={setCity}
+              hasError={!!errors.city}
+              placeholder="Например: Москва"
+            />
+            {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city}</p>}
           </div>
 
           <div>

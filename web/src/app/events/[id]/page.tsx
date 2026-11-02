@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import Avatar from '@/components/Avatar'
+import Header from '@/components/Header'
 
 type EventDetail = {
   id: string
@@ -13,6 +14,7 @@ type EventDetail = {
   title: string
   description?: string | null
   theme?: string | null
+  city?: string | null
   startsAt: string
   maxGuests?: number | null
   status: string
@@ -299,31 +301,38 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900">
-        <p className="text-gray-500">Загрузка...</p>
+      <main className="min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <div className="flex items-center justify-center p-6">
+          <p className="text-gray-500">Загрузка...</p>
+        </div>
       </main>
     )
   }
 
   if (notFound || !event) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-gray-900">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Событие не найдено</h1>
-          <button
-            onClick={() => router.replace('/')}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Назад к событиям
-          </button>
+      <main className="min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <div className="flex items-center justify-center p-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Событие не найдено</h1>
+            <button
+              onClick={() => router.replace('/')}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Назад к событиям
+            </button>
+          </div>
         </div>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
-      <div className="max-w-3xl mx-auto">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <Header />
+      <div className="max-w-3xl mx-auto p-4 sm:p-6">
         <button onClick={() => router.replace('/')} className="mb-4 text-blue-600 hover:underline">
           ← Назад к событиям
         </button>
@@ -340,6 +349,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             </span>
           </div>
           {event.theme && <p className="text-sm text-gray-500 mb-2">Тема: {event.theme}</p>}
+          {event.city && (
+            <p className="mb-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                📍 {event.city}
+              </span>
+            </p>
+          )}
           <p className="text-gray-700">🕒 {formatDate(event.startsAt)}</p>
           {event.description && (
             <p className="mt-4 text-gray-700 whitespace-pre-line">{event.description}</p>

@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
-import NotificationBell from '@/components/NotificationBell'
 import Avatar from '@/components/Avatar'
-import UserMenu from '@/components/UserMenu'
+import Header from '@/components/Header'
 
 type EventItem = {
   id: string
   title: string
   theme?: string | null
+  city?: string | null
   startsAt: string
   maxGuests?: number | null
   host: {
@@ -41,7 +42,8 @@ function freeSpots(event: EventItem): number | null {
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
+  const { city, setCity, ready: cityReady } = useCity()
 
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,6 +61,8 @@ export default function Home() {
   }, [search])
 
   useEffect(() => {
+    if (!cityReady) return
+
     if (activeFeed === 'following' && !user) {
       setEvents([])
       setError(null)
@@ -71,8 +75,12 @@ export default function Home() {
     setError(null)
 
     if (activeFeed === 'following' && user) {
+      const feedParams = new URLSearchParams()
+      if (city) feedParams.set('city', city)
+      const feedPath = feedParams.toString() ? `/feed/events?${feedParams}` : '/feed/events'
+
       Promise.all([
-        api.get<{ success: boolean; events: EventItem[] }>('/feed/events'),
+        api.get<{ success: boolean; events: EventItem[] }>(feedPath),
         api.get<{ success: boolean; users: { id: string }[] }>(`/users/${user.id}/following`),
       ])
         .then(([feed, follow]) => {
@@ -93,6 +101,7 @@ export default function Home() {
       const q = debouncedSearch.trim()
       if (q) params.set('search', q)
       if (theme) params.set('theme', theme)
+      if (city) params.set('city', city)
       api
         .get<{ success: boolean; events: EventItem[] }>(`/events?${params.toString()}`)
         .then((data) => {
@@ -110,44 +119,17 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [activeFeed, user, debouncedSearch, theme])
+  }, [activeFeed, user, debouncedSearch, theme, city, cityReady])
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
-      {/* Шапка с навигацией */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
-            SvoiKrug
-          </Link>
-
-          <nav className="flex items-center gap-4 text-sm">
-            {!authLoading &&
-              (user ? (
-                <>
-                  <NotificationBell />
-                  <UserMenu />
-                </>
-              ) : (
-                <>
-                  <Link href="/login" className="text-blue-600 hover:underline">
-                    Войти
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                  >
-                    Регистрация
-                  </Link>
-                </>
-              ))}
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       {/* Лента событий */}
       <div className="max-w-5xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold mb-4">Активные сборы</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          {city ? `События в ${city}` : 'Все события'}
+        </h1>
 
         <div className="flex gap-2 mb-6">
           <button
@@ -203,6 +185,24 @@ export default function Home() {
               Войти
             </Link>
           </div>
+        ) : city && events.length === 0 ? (
+          <div className="p-10 text-center bg-white rounded-lg shadow">
+            <p className="text-gray-600 text-lg">В городе {city} пока нет событий</p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => setCity(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
+              >
+                Показать все города
+              </button>
+              <Link
+                href="/events/new"
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+              >
+                Создать событие
+              </Link>
+            </div>
+          </div>
         ) : events.length === 0 ? (
           activeFeed === 'following' ? (
             followingCount === 0 ? (
@@ -238,6 +238,13 @@ export default function Home() {
                     <div>
                       <h2 className="text-lg font-semibold text-gray-900">{ev.title}</h2>
                       {ev.theme && <p className="text-sm text-gray-500 mt-0.5">Тема: {ev.theme}</p>}
+                      {ev.city && (
+                        <p className="mt-1">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            📍 {ev.city}
+                          </span>
+                        </p>
+                      )}
                       <p className="text-sm text-gray-600 mt-2">🕒 {formatDateTime(ev.startsAt)}</p>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Avatar

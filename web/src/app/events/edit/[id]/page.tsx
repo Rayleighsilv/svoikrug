@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
 import { validateCreateEvent, type CreateEventErrors } from '@/lib/validation'
+import CityInput from '@/components/CityInput'
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
-const KNOWN_FIELDS = ['title', 'description', 'theme', 'startsAt', 'maxGuests'] as const
+const KNOWN_FIELDS = ['title', 'description', 'theme', 'city', 'startsAt', 'maxGuests'] as const
 
 type EventDetail = {
   id: string
@@ -15,6 +17,7 @@ type EventDetail = {
   title: string
   description?: string | null
   theme?: string | null
+  city?: string | null
   startsAt: string
   maxGuests?: number | null
 }
@@ -30,6 +33,7 @@ function isoToDatetimeLocal(iso: string): string {
 
 export default function EditEventPage({ params }: { params: { id: string } }) {
   const { user, loading: authLoading } = useAuth()
+  const { city: selectedCity, ready: cityReady } = useCity()
   const router = useRouter()
   const id = params.id
 
@@ -40,11 +44,13 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('')
+  const [city, setCity] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [maxGuests, setMaxGuests] = useState('')
   const [errors, setErrors] = useState<CreateEventErrors>({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const prefilledRef = useRef(false)
 
   // Загружаем событие и заполняем форму текущими значениями
   useEffect(() => {
@@ -79,10 +85,17 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
     }
   }, [authLoading, user, router, id])
 
+  // Предзаполняем город: город события, иначе выбранный в шапке, иначе из профиля.
+  useEffect(() => {
+    if (!event || prefilledRef.current || authLoading || !cityReady) return
+    setCity(event.city || selectedCity || user?.profile?.city || '')
+    prefilledRef.current = true
+  }, [event, authLoading, cityReady, selectedCity, user])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const validation = validateCreateEvent({ title, description, theme, startsAt, maxGuests })
+    const validation = validateCreateEvent({ title, description, theme, city, startsAt, maxGuests })
     if (Object.keys(validation).length > 0) {
       setErrors(validation)
       return
@@ -96,6 +109,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
         title: title.trim(),
         description: description.trim(),
         theme,
+        city: city.trim(),
         // datetime-local → UTC ISO 8601
         startsAt: new Date(startsAt).toISOString(),
         maxGuests: maxGuests === '' ? undefined : Number(maxGuests),
@@ -229,6 +243,20 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
               ))}
             </select>
             {errors.theme && <p className="mt-1 text-sm text-red-600">{errors.theme}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="city">
+              Город
+            </label>
+            <CityInput
+              id="city"
+              value={city}
+              onChange={setCity}
+              hasError={!!errors.city}
+              placeholder="Например: Москва"
+            />
+            {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city}</p>}
           </div>
 
           <div>

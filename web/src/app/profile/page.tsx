@@ -5,14 +5,16 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
-import NotificationBell from '@/components/NotificationBell'
+import Header from '@/components/Header'
 import ProfileAvatar from '@/components/ProfileAvatar'
+import CityInput from '@/components/CityInput'
 
 type EventItem = {
   id: string
   hostId: string
   title: string
   status: string
+  city?: string | null
   startsAt: string
   maxGuests?: number | null
   _count: { guests: number }
@@ -28,6 +30,7 @@ type RsvpItem = {
     id: string
     title: string
     theme?: string | null
+    city?: string | null
     startsAt: string
     status: string
     maxGuests?: number | null
@@ -49,7 +52,7 @@ function formatDate(iso: string): string {
 }
 
 export default function ProfilePage() {
-  const { user, loading, logout, refreshUser } = useAuth()
+  const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
 
   const [myEvents, setMyEvents] = useState<EventItem[]>([])
@@ -58,6 +61,7 @@ export default function ProfilePage() {
   const [nickname, setNickname] = useState('')
   const [bio, setBio] = useState('')
   const [district, setDistrict] = useState('')
+  const [profileCity, setProfileCity] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [myRsvps, setMyRsvps] = useState<RsvpItem[]>([])
@@ -106,8 +110,32 @@ export default function ProfilePage() {
     setRsvpsError('')
     api
       .get<{ success: boolean; rsvps: RsvpItem[] }>(`/users/me/rsvps?scope=${rsvpsScope}`)
-      .then((data) => {
-        if (!cancelled) setMyRsvps(data.rsvps || [])
+      .then(async (data) => {
+        const rsvps = data.rsvps || []
+        if (cancelled) return
+        // В ответе RSVP нет города события — добираем его из деталей события.
+        const ids = Array.from(new Set(rsvps.map((r) => r.eventId)))
+        const cities = await Promise.all(
+          ids.map(async (eventId) => {
+            try {
+              const detail = await api.get<{
+                success: boolean
+                event: { city?: string | null }
+              }>(`/events/${eventId}`)
+              return [eventId, detail.event.city ?? null] as const
+            } catch {
+              return [eventId, null] as const
+            }
+          }),
+        )
+        if (cancelled) return
+        const cityById = new Map(cities)
+        setMyRsvps(
+          rsvps.map((r) => ({
+            ...r,
+            event: { ...r.event, city: cityById.get(r.eventId) ?? null },
+          })),
+        )
       })
       .catch((err) => {
         console.error('Ошибка загрузки записей:', err)
@@ -138,11 +166,6 @@ export default function ProfilePage() {
     }
   }
 
-  const handleLogout = async () => {
-    await logout()
-    router.replace('/')
-  }
-
   const handleCancelRsvp = async (rsvp: RsvpItem) => {
     setCancelingId(rsvp.id)
     setRsvpsError('')
@@ -160,6 +183,7 @@ export default function ProfilePage() {
     setNickname(user?.profile?.nickname || '')
     setBio(user?.profile?.bio || '')
     setDistrict(user?.profile?.district || '')
+    setProfileCity(user?.profile?.city || '')
     setSaveError('')
     setEditing(true)
   }
@@ -175,10 +199,15 @@ export default function ProfilePage() {
       setSaveError('Ник может содержать только буквы, цифры, дефис и подчёркивание')
       return
     }
+    const cityValue = profileCity.trim()
+    if (cityValue && (cityValue.length < 2 || cityValue.length > 50)) {
+      setSaveError('Город должен содержать от 2 до 50 символов')
+      return
+    }
     setSaving(true)
     setSaveError('')
     try {
-      await api.patch('/users/me/profile', { nickname: nick, bio, district })
+      await api.patch('/users/me/profile', { nickname: nick, bio, district, city: cityValue })
       await refreshUser()
       setEditing(false)
     } catch (err) {
@@ -201,8 +230,11 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900">
-        <p className="text-gray-500">Загрузка...</p>
+      <main className="min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <div className="flex items-center justify-center p-6">
+          <p className="text-gray-500">Загрузка...</p>
+        </div>
       </main>
     )
   }
@@ -213,8 +245,9 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
-      <div className="max-w-3xl mx-auto">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <Header />
+      <div className="max-w-3xl mx-auto p-4 sm:p-6">
         <Link
           href="/"
           className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
@@ -229,26 +262,7 @@ export default function ProfilePage() {
           К событиям
         </Link>
 
-        {/* Шапка: заголовок + действия */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">Профиль</h1>
-          <div className="flex gap-3">
-            <NotificationBell />
-            <Link
-              href="/events/new"
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-            >
-              Создать событие
-            </Link>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium transition"
-            >
-              Выйти
-            </button>
-          </div>
-        </div>
+        <h1 className="mb-8 text-2xl font-bold">Профиль</h1>
 
         {/* Карточка профиля */}
         <div className="bg-white p-6 rounded-lg shadow">
@@ -271,6 +285,13 @@ export default function ProfilePage() {
                     {copiedEmail ? <CheckIcon /> : <CopyIcon />}
                   </button>
                 </div>
+                {user.profile?.city && (
+                  <p className="mt-1">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      📍 {user.profile.city}
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
             {!editing && (
@@ -326,6 +347,17 @@ export default function ProfilePage() {
                   onChange={(e) => setDistrict(e.target.value)}
                   maxLength={100}
                   className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="edit-city">
+                  Город
+                </label>
+                <CityInput
+                  id="edit-city"
+                  value={profileCity}
+                  onChange={setProfileCity}
+                  placeholder="Например: Москва"
                 />
               </div>
               <div className="flex gap-3">
@@ -391,6 +423,7 @@ export default function ProfilePage() {
                   >
                     <div className="font-semibold">{ev.title}</div>
                     <div className="text-sm text-gray-600">🕒 {formatDate(ev.startsAt)}</div>
+                    {ev.city && <div className="text-sm text-gray-600">📍 {ev.city}</div>}
                     <div className="text-sm text-gray-600">Статус: {ev.status}</div>
                     <div className="text-sm text-gray-600">
                       Гостей: {ev._count.guests}
@@ -453,6 +486,7 @@ export default function ProfilePage() {
                       {r.event.title}
                     </Link>
                     <div className="text-sm text-gray-600 mt-1">🕒 {formatDate(r.event.startsAt)}</div>
+                    {r.event.city && <div className="text-sm text-gray-600">📍 {r.event.city}</div>}
                     <div className="text-sm text-gray-600">
                       Хост:{' '}
                       <Link
