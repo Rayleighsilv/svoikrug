@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, GuestStatus } from '@prisma/client'
 
 export class FeedService {
   constructor(private prisma: PrismaClient) {}
@@ -21,7 +21,15 @@ export class FeedService {
       },
       include: {
         host: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
-        _count: { select: { guests: true } },
+        _count: {
+          select: {
+            guests: {
+              where: {
+                status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+              },
+            },
+          },
+        },
       },
       orderBy: { startsAt: 'asc' },
       take: limit,

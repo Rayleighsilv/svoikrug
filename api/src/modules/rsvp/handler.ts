@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { RsvpService } from './service'
-import { rsvpParamsSchema, markAttendanceSchema } from './schema'
+import { rsvpParamsSchema, markAttendanceSchema, guestReviewParamsSchema } from './schema'
 
 export class RsvpHandler {
   constructor(private service: RsvpService) {}
@@ -37,6 +37,45 @@ export class RsvpHandler {
 
     const result = await this.service.cancel(userId, id)
     return result
+  }
+
+  // POST /events/:id/guests/:userId/approve
+  async approveGuest(
+    request: FastifyRequest<{ Params: { id: string; userId: string } }>,
+    reply: FastifyReply,
+  ) {
+    return this.reviewGuest(request, reply, 'approved')
+  }
+
+  // POST /events/:id/guests/:userId/reject
+  async rejectGuest(
+    request: FastifyRequest<{ Params: { id: string; userId: string } }>,
+    reply: FastifyReply,
+  ) {
+    return this.reviewGuest(request, reply, 'rejected')
+  }
+
+  private async reviewGuest(
+    request: FastifyRequest<{ Params: { id: string; userId: string } }>,
+    reply: FastifyReply,
+    decision: 'approved' | 'rejected',
+  ) {
+    const parsed = guestReviewParamsSchema.safeParse(request.params)
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Invalid request parameters',
+        details: parsed.error.issues,
+      })
+    }
+    const hostId = request.userId!
+    const guest = await this.service.reviewRequest(
+      hostId,
+      parsed.data.id,
+      parsed.data.userId,
+      decision,
+    )
+    return { success: true, guest }
   }
 
   // GET /events/:id/guests — список гостей

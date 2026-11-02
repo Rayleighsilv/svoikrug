@@ -8,3 +8,9 @@ export { eventIdSchema as rsvpParamsSchema } from '../events/schema'
 export const markAttendanceSchema = z.object({
   userIds: z.array(z.string().uuid('Invalid user ID')).default([]),
 })
+
+// Параметры approve/reject заявки гостя.
+export const guestReviewParamsSchema = z.object({
+  id: z.string().uuid('Invalid event ID format'),
+  userId: z.string().uuid('Invalid user ID format'),
+})

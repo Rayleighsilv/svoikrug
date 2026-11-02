@@ -25,19 +25,116 @@ export class RsvpService {
       throw new AppError('You have already joined this event', 409, 'ALREADY_JOINED')
     }
 
-    // Лимит гостей (если задан)
+    // Лимит учитывает активные заявки и подтверждённых гостей.
     if (event.maxGuests != null) {
-      const count = await this.prisma.eventGuest.count({ where: { eventId } })
+      const count = await this.prisma.eventGuest.count({
+        where: {
+          eventId,
+          status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+        },
+      })
       if (count >= event.maxGuests) {
         throw new AppError('The event is full', 400, 'EVENT_FULL')
       }
     }
 
-    // Для MVP без модерации — сразу approved.
-    return this.prisma.eventGuest.create({
-      data: { eventId, userId, status: 'approved' as GuestStatus },
-      include: { user: { include: { profile: true } } },
+    // Заявка попадает хосту на подтверждение.
+    const guest = await this.prisma.eventGuest.create({
+      data: { eventId, userId, status: 'pending' as GuestStatus },
+      include: {
+        user: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+      },
     })
+
+    await this.prisma.notification.create({
+      data: {
+        userId: event.hostId,
+        type: 'RSVP_REQUEST',
+        payload: {
+          eventId: event.id,
+          eventTitle: event.title,
+          guestId: userId,
+          guestNickname: guest.user.profile?.nickname ?? 'Без имени',
+          guestAvatarUrl: guest.user.profile?.avatarUrl ?? null,
+        },
+      },
+    })
+
+    return guest
+  }
+
+  // POST /events/:id/guests/:userId/approve|reject — хост обрабатывает заявку
+  async reviewRequest(
+    hostId: string,
+    eventId: string,
+    guestUserId: string,
+    decision: 'approved' | 'rejected',
+  ) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { hostId: true, maxGuests: true },
+    })
+    if (!event) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (event.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
+    }
+
+    const guest = await this.prisma.eventGuest.findUnique({
+      where: { eventId_userId: { eventId, userId: guestUserId } },
+    })
+    if (!guest) {
+      throw new AppError('Guest request not found', 404, 'NOT_A_GUEST')
+    }
+    if (guest.status !== 'pending') {
+      throw new AppError('Request has already been reviewed', 409, 'REQUEST_ALREADY_REVIEWED')
+    }
+
+    if (decision === 'approved' && event.maxGuests != null) {
+      const approvedCount = await this.prisma.eventGuest.count({
+        where: {
+          eventId,
+          status: { in: ['approved', 'attended'] as GuestStatus[] },
+        },
+      })
+      if (approvedCount >= event.maxGuests) {
+        throw new AppError('The event is full', 400, 'EVENT_FULL')
+      }
+    }
+
+    const updated = await this.prisma.eventGuest.update({
+      where: { id: guest.id },
+      data: { status: decision as GuestStatus },
+      include: {
+        user: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+      },
+    })
+
+    // Помечаем уведомление-заявку обработанным и сохраняем решение.
+    const notifications = await this.prisma.notification.findMany({
+      where: { userId: hostId, type: 'RSVP_REQUEST' },
+    })
+    const matching = notifications.filter((notification) => {
+      const payload = notification.payload as { eventId?: string; guestId?: string }
+      return payload.eventId === eventId && payload.guestId === guestUserId
+    })
+    await Promise.all(
+      matching.map((notification) =>
+        this.prisma.notification.update({
+          where: { id: notification.id },
+          data: {
+            isRead: true,
+            payload: {
+              ...(notification.payload as Record<string, unknown>),
+              decision,
+            },
+          },
+        }),
+      ),
+    )
+
+    return updated
   }
 
   // DELETE /events/:id/rsvp — отменить свою запись
@@ -132,7 +229,15 @@ export class RsvpService {
               status: true,
               maxGuests: true,
               host: { select: { id: true, profile: { select: { nickname: true } } } },
-              _count: { select: { guests: true } },
+              _count: {
+                select: {
+                  guests: {
+                    where: {
+                      status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+                    },
+                  },
+                },
+              },
             },
           },
         },

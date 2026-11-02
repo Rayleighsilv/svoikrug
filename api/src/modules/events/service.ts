@@ -1,4 +1,4 @@
-import { PrismaClient, EventStatus } from '@prisma/client'
+import { PrismaClient, EventStatus, GuestStatus } from '@prisma/client'
 import { CreateEventInput, UpdateEventInput } from './schema'
 import { AppError } from '../../common/errors'
 
@@ -24,7 +24,15 @@ export class EventService {
       where: { id },
       include: {
         host: { select: { id: true, email: true, profile: true } },
-        _count: { select: { guests: true } },
+        _count: {
+          select: {
+            guests: {
+              where: {
+                status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+              },
+            },
+          },
+        },
       },
     })
   }
@@ -68,7 +76,15 @@ export class EventService {
       },
       include: {
         host: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
-        _count: { select: { guests: true } },
+        _count: {
+          select: {
+            guests: {
+              where: {
+                status: { in: ['pending', 'approved', 'attended'] as GuestStatus[] },
+              },
+            },
+          },
+        },
       },
       orderBy: { startsAt: 'asc' },
       take: limit,

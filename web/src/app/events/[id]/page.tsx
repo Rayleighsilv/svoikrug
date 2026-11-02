@@ -69,7 +69,6 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
   const [event, setEvent] = useState<EventDetail | null>(null)
   const [guests, setGuests] = useState<GuestItem[]>([])
-  const [guestCount, setGuestCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false)
@@ -78,6 +77,8 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [statusError, setStatusError] = useState('')
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(false)
   const [attendanceError, setAttendanceError] = useState('')
+  const [reviewingGuestId, setReviewingGuestId] = useState<string | null>(null)
+  const [guestReviewError, setGuestReviewError] = useState('')
   const [scores, setScores] = useState<Record<string, number>>({})
   const [comments, setComments] = useState<Record<string, string>>({})
   const [ratedUsers, setRatedUsers] = useState<Set<string>>(new Set())
@@ -99,7 +100,6 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       .then((data) => {
         if (cancelled) return
         setEvent(data.event)
-        setGuestCount(data.event._count.guests)
       })
       .catch(() => {
         if (!cancelled) setNotFound(true)
@@ -110,9 +110,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       .get<{ success: boolean; guests: GuestItem[] }>(`/events/${id}/guests`)
       .then((data) => {
         if (cancelled) return
-        const list = data.guests || []
-        setGuests(list)
-        setGuestCount(list.length)
+        setGuests(data.guests || [])
       })
       .catch(() => {
         if (!cancelled) setGuests([])
@@ -124,20 +122,54 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     }
   }, [id])
 
+  const activeGuests = guests.filter((g) =>
+    ['pending', 'approved', 'attended'].includes(g.status),
+  )
+  const confirmedGuests = guests.filter(
+    (g) => g.status === 'approved' || g.status === 'attended',
+  )
+  const pendingGuests = guests.filter((g) => g.status === 'pending')
+
   const signedUp = !!(user && guests.some((g) => g.userId === user.id))
   const isHost = !!(user && event && user.id === event.hostId)
   const isPublished = event?.status === 'published'
-  const isFull = !!(event && event.maxGuests != null && guestCount >= event.maxGuests)
+  const isFull = !!(event && event.maxGuests != null && activeGuests.length >= event.maxGuests)
 
   const myGuest = user ? guests.find((g) => g.userId === user.id) : null
   const iAttended = myGuest?.status === 'attended'
   const rateable = guests.filter((g) => g.status === 'attended' && g.userId !== user?.id)
+  const cancelLabel =
+    myGuest?.status === 'pending'
+      ? 'Отменить заявку'
+      : myGuest?.status === 'rejected'
+        ? 'Убрать заявку'
+        : 'Отменить запись'
 
   const refetchGuests = async () => {
     const data = await api.get<{ success: boolean; guests: GuestItem[] }>(`/events/${id}/guests`)
-    const list = data.guests || []
-    setGuests(list)
-    setGuestCount(list.length)
+    setGuests(data.guests || [])
+  }
+
+  const handleReviewGuest = async (guestUserId: string, action: 'approve' | 'reject') => {
+    setReviewingGuestId(guestUserId)
+    setGuestReviewError('')
+    try {
+      await api.post(`/events/${id}/guests/${guestUserId}/${action}`)
+      await refetchGuests()
+    } catch (err) {
+      const e = (err || {}) as { code?: string }
+      const map: Record<string, string> = {
+        EVENT_FULL: 'Свободных мест больше нет',
+        NOT_A_GUEST: 'Заявка уже неактуальна',
+        REQUEST_ALREADY_REVIEWED: 'Заявка уже обработана',
+        ACCESS_DENIED: 'Нет доступа',
+      }
+      setGuestReviewError(
+        e.code ? map[e.code] || 'Не удалось обработать заявку' : 'Не удалось обработать заявку',
+      )
+    } finally {
+      setReviewingGuestId(null)
+    }
   }
 
   const handleJoin = async () => {
@@ -217,9 +249,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         `/events/${event.id}/mark-attendance`,
         { userIds: Array.from(current) },
       )
-      const list = res.guests || []
-      setGuests(list)
-      setGuestCount(list.length)
+      setGuests(res.guests || [])
     } catch (err) {
       const e = (err || {}) as { message?: string }
       setAttendanceError(e.message || 'Не удалось обновить посещаемость')
@@ -375,19 +405,59 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           {event.host.email && <p className="text-sm text-gray-500">{event.host.email}</p>}
         </div>
 
+        {isHost && pendingGuests.length > 0 && (
+          <div className="mt-6 p-6 bg-white rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-3">Заявки на участие</h2>
+            {guestReviewError && (
+              <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">
+                {guestReviewError}
+              </div>
+            )}
+            <ul className="space-y-3">
+              {pendingGuests.map((g) => {
+                const nickname = g.user.profile?.nickname || 'Без имени'
+                return (
+                  <li key={g.id} className="flex flex-wrap items-center gap-3">
+                    <Avatar url={g.user.profile?.avatarUrl} name={nickname} />
+                    <Link href={`/users/${g.userId}`} className="font-medium text-blue-600 hover:underline">
+                      {nickname}
+                    </Link>
+                    <div className="ml-auto flex gap-2">
+                      <button
+                        onClick={() => handleReviewGuest(g.userId, 'approve')}
+                        disabled={reviewingGuestId === g.userId}
+                        className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-60"
+                      >
+                        {reviewingGuestId === g.userId ? '...' : 'Принять'}
+                      </button>
+                      <button
+                        onClick={() => handleReviewGuest(g.userId, 'reject')}
+                        disabled={reviewingGuestId === g.userId}
+                        className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-60"
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+
         <div className="mt-6 p-6 bg-white rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3">Гости</h2>
           <p className="text-gray-700 mb-4">
             {event.maxGuests != null
-              ? `Записалось: ${guestCount} из ${event.maxGuests}`
-              : `Записалось: ${guestCount}`}
+              ? `Записалось: ${confirmedGuests.length} из ${event.maxGuests}`
+              : `Записалось: ${confirmedGuests.length}`}
           </p>
 
-          {guests.length === 0 ? (
+          {confirmedGuests.length === 0 ? (
             <p className="text-gray-600">Пока никто не записался</p>
           ) : (
             <ul className="space-y-3">
-              {guests.map((g) => {
+              {confirmedGuests.map((g) => {
                 const nickname = g.user.profile?.nickname || 'Без имени'
                 return (
                   <li key={g.id} className="flex items-center gap-3">
@@ -408,11 +478,11 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             {attendanceError && (
               <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{attendanceError}</div>
             )}
-            {guests.length === 0 ? (
+            {confirmedGuests.length === 0 ? (
               <p className="text-gray-600">Нет записавшихся гостей</p>
             ) : (
               <ul className="space-y-2">
-                {guests.map((g) => {
+                {confirmedGuests.map((g) => {
                   const nickname = g.user.profile?.nickname || 'Без имени'
                   return (
                     <li key={g.id}>
@@ -528,6 +598,17 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded">{rsvpError}</div>
         )}
 
+        {!isHost && myGuest?.status === 'pending' && (
+          <div className="mt-6 p-3 bg-amber-50 text-amber-800 text-sm rounded">
+            Заявка на рассмотрении у организатора.
+          </div>
+        )}
+        {!isHost && myGuest?.status === 'rejected' && (
+          <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded">
+            Организатор отклонил заявку. Можно убрать её и отправить новую.
+          </div>
+        )}
+
         {!authLoading && (
           <div className="mt-8 flex gap-3">
             {isHost ? (
@@ -597,7 +678,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                 disabled={rsvpSubmitting}
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-60"
               >
-                {rsvpSubmitting ? 'Отменяем...' : 'Отменить запись'}
+                {rsvpSubmitting ? 'Отменяем...' : cancelLabel}
               </button>
             ) : (
               <button
@@ -605,7 +686,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                 disabled={rsvpSubmitting}
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
               >
-                {rsvpSubmitting ? 'Записываемся...' : 'Записаться'}
+                {rsvpSubmitting ? 'Отправляем...' : 'Хочу пойти'}
               </button>
             )}
           </div>
