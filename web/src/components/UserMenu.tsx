@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Avatar from '@/components/Avatar'
+import ConnectionsModal, { type ConnectionsTab } from '@/components/ConnectionsModal'
 
 export default function UserMenu() {
   const { user, logout } = useAuth()
@@ -14,10 +15,12 @@ export default function UserMenu() {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [connections, setConnections] = useState<ConnectionsTab | null>(null)
 
-  // Закрываем меню при переходе на другую страницу.
+  // Закрываем меню (и окно связей) при переходе на другую страницу.
   useEffect(() => {
     setOpen(false)
+    setConnections(null)
   }, [pathname])
 
   // Закрываем по клику вне меню и по Escape.
@@ -51,10 +54,20 @@ export default function UserMenu() {
     }
   }, [open])
 
+  const closeConnections = useCallback(() => {
+    setConnections(null)
+    requestAnimationFrame(() => triggerRef.current?.focus())
+  }, [])
+
   if (!user) return null
 
   const displayName = user.profile?.nickname || user.email
   const hasNickname = Boolean(user.profile?.nickname)
+
+  const openConnections = (tab: ConnectionsTab) => {
+    setOpen(false)
+    setConnections(tab)
+  }
 
   const handleLogout = async () => {
     setOpen(false)
@@ -122,6 +135,32 @@ export default function UserMenu() {
               </svg>
               Профиль
             </Link>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openConnections('following')}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 transition hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+            >
+              <svg className="h-4 w-4 shrink-0 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fillRule="evenodd"
+                  d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 8a7 7 0 1114 0H3z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Подписки
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openConnections('followers')}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 transition hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+            >
+              <svg className="h-4 w-4 shrink-0 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+              </svg>
+              Подписчики
+            </button>
             <Link
               href="/events/new"
               role="menuitem"
@@ -157,6 +196,14 @@ export default function UserMenu() {
             </button>
           </div>
         </div>
+      )}
+
+      {connections && (
+        <ConnectionsModal
+          userId={user.id}
+          initialTab={connections}
+          onClose={closeConnections}
+        />
       )}
     </div>
   )
