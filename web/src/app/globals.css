@@ -7,11 +7,10 @@
   --foreground: #171717;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  color-scheme: dark;
 }
 
 body {
@@ -24,4 +23,186 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/*
+ * Тёмная тема перекрашивает базовые утилиты Tailwind на уровне каскада,
+ * чтобы не дублировать dark:-варианты в каждой странице и компоненте.
+ * Селекторы с .dark специфичнее самих утилит.
+ */
+.dark body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.dark .bg-white {
+  background-color: #1e293b;
+}
+
+.dark .bg-gray-50 {
+  background-color: #0f172a;
+}
+
+.dark .bg-gray-100 {
+  background-color: #334155;
+}
+
+.dark .bg-gray-200 {
+  background-color: #475569;
+}
+
+.dark .bg-gray-300 {
+  background-color: #475569;
+}
+
+.dark .hover\:bg-gray-50:hover,
+.dark .focus-visible\:bg-gray-50:focus-visible {
+  background-color: #334155;
+}
+
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-gray-200:hover {
+  background-color: #334155;
+}
+
+.dark .text-gray-900 {
+  color: #f8fafc;
+}
+
+.dark .text-gray-800 {
+  color: #e2e8f0;
+}
+
+.dark .text-gray-700 {
+  color: #cbd5e1;
+}
+
+.dark .text-gray-600 {
+  color: #94a3b8;
+}
+
+.dark .text-gray-500 {
+  color: #8fa3b8;
+}
+
+.dark .text-gray-400 {
+  color: #64748b;
+}
+
+.dark .border-gray-100,
+.dark .border-gray-200 {
+  border-color: #334155;
+}
+
+.dark .border-gray-300 {
+  border-color: #475569;
+}
+
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
+}
+
+/* Акцентные плашки и ссылки: приглушаем фон и повышаем контраст текста. */
+.dark .bg-blue-50 {
+  background-color: rgba(30, 64, 175, 0.3);
+}
+
+.dark .bg-blue-100 {
+  background-color: rgba(37, 99, 235, 0.25);
+}
+
+.dark .text-blue-600,
+.dark .text-blue-700 {
+  color: #60a5fa;
+}
+
+.dark .border-blue-600 {
+  border-color: #60a5fa;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.35);
+}
+
+.dark .bg-red-100 {
+  background-color: rgba(127, 29, 29, 0.45);
+}
+
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-900 {
+  color: #fca5a5;
+}
+
+.dark .hover\:bg-red-50:hover,
+.dark .focus-visible\:bg-red-50:focus-visible {
+  background-color: rgba(127, 29, 29, 0.35);
+}
+
+.dark .bg-green-100 {
+  background-color: rgba(20, 83, 45, 0.5);
+}
+
+.dark .text-green-600,
+.dark .text-green-700,
+.dark .text-green-800 {
+  color: #86efac;
+}
+
+.dark .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.35);
+}
+
+.dark .bg-amber-100 {
+  background-color: rgba(120, 53, 15, 0.45);
+}
+
+.dark .text-amber-700,
+.dark .text-amber-800 {
+  color: #fcd34d;
+}
+
+.dark .bg-indigo-100 {
+  background-color: rgba(49, 46, 129, 0.5);
+}
+
+.dark .text-indigo-700 {
+  color: #a5b4fc;
+}
+
+.dark .bg-pink-100 {
+  background-color: rgba(131, 24, 67, 0.45);
+}
+
+.dark .text-pink-700 {
+  color: #f9a8d4;
+}
+
+.dark .bg-emerald-100 {
+  background-color: rgba(6, 78, 59, 0.5);
+}
+
+.dark .text-emerald-700 {
+  color: #6ee7b7;
+}
+
+.dark .bg-purple-100 {
+  background-color: rgba(59, 7, 100, 0.5);
+}
+
+.dark .text-purple-700 {
+  color: #d8b4fe;
 }

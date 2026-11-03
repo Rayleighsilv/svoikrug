@@ -76,7 +76,9 @@ const DESCRIPTIONS = [
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 
-type SeededUser = { id: string; city: string; nickname: string }
+const STREETS = ['ул. Ленина', 'ул. Пушкина', 'ул. Садовая', 'ул. Лесная', 'ул. Гоголя']
+
+type SeededUser = { id: string; city: string; district: string; nickname: string }
 
 async function uniqueNickname(base: string, taken: Set<string>): Promise<string> {
   if (!taken.has(base)) {
@@ -123,6 +125,7 @@ async function main() {
             avatarUrl: `https://i.pravatar.cc/200?img=${(i % 70) + 1}`,
             district: person.district,
             city,
+            birthDate: new Date(Date.UTC(1985 + (i % 16), i % 12, 1 + (i % 27))),
             trustScore: Number((3.8 + (i % 7) * 0.2).toFixed(1)),
             isVerified: i % 5 === 0,
           },
@@ -131,7 +134,7 @@ async function main() {
       select: { id: true },
     })
 
-    users.push({ id: user.id, city, nickname })
+    users.push({ id: user.id, city, district: person.district, nickname })
   }
 
   console.log(`Created ${users.length} seed users`)
@@ -150,6 +153,8 @@ async function main() {
         description: DESCRIPTIONS[i % DESCRIPTIONS.length],
         theme: THEMES[i % THEMES.length],
         city: host.city,
+        addressPublic: `${host.city}, ${host.district}, квартал ${1 + (i % 9)}`,
+        addressPrivate: `${STREETS[i % STREETS.length]}, д. ${1 + (i % 30)}, кв. ${1 + (i % 60)}, код ${1000 + i}`,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 8 + (i % 15),
@@ -191,6 +196,8 @@ async function main() {
         description: DESCRIPTIONS[(i + 2) % DESCRIPTIONS.length],
         theme: THEMES[(i + 3) % THEMES.length],
         city: host.city,
+        addressPublic: `${host.city}, ${host.district}, квартал ${1 + ((i + 2) % 9)}`,
+        addressPrivate: `${STREETS[(i + 2) % STREETS.length]}, д. ${1 + ((i + 2) % 30)}, кв. ${1 + ((i + 2) % 60)}, код ${1000 + i}`,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 8 + ((i + 4) % 15),
@@ -225,6 +232,8 @@ async function main() {
         description: DESCRIPTIONS[(i + 4) % DESCRIPTIONS.length],
         theme: THEMES[(i + 2) % THEMES.length],
         city: host.city,
+        addressPublic: `${host.city}, ${host.district}, квартал ${1 + ((i + 5) % 9)}`,
+        addressPrivate: `${STREETS[(i + 5) % STREETS.length]}, д. ${1 + ((i + 5) % 30)}, кв. ${1 + ((i + 5) % 60)}, код ${1000 + i}`,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 12 + i * 4,

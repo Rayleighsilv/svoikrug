@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import NotificationBell from '@/components/NotificationBell'
 import UserMenu from '@/components/UserMenu'
 import CitySelector from '@/components/CitySelector'
+import ThemeToggle from '@/components/ThemeToggle'
 
 export default function Header() {
   const { user, loading } = useAuth()
@@ -20,6 +21,7 @@ export default function Header() {
         </div>
 
         <nav className="flex shrink-0 items-center gap-2 text-sm sm:gap-4">
+          <ThemeToggle />
           {!loading &&
             (user ? (
               <>

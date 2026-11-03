@@ -63,6 +63,7 @@ model Profile {
   avatarUrl   String? @map("avatar_url")
   district    String? @map("district")
   city        String? @map("city")
+  birthDate   DateTime? @map("birth_date") @db.Date
   trustScore  Float   @default(0) @map("trust_score")
   isVerified  Boolean @default(false) @map("is_verified")
 
@@ -79,6 +80,8 @@ model Event {
   description String?     @map("description")
   theme       String?     @map("theme")
   city        String?     @map("city")
+  addressPublic  String?  @map("address_public")
+  addressPrivate String?  @map("address_private")
   startsAt    DateTime    @map("starts_at")
   endsAt      DateTime?   @map("ends_at")
   maxGuests   Int?        @map("max_guests")

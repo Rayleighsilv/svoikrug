@@ -9,7 +9,16 @@ import { validateCreateEvent, type CreateEventErrors } from '@/lib/validation'
 import CityInput from '@/components/CityInput'
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
-const KNOWN_FIELDS = ['title', 'description', 'theme', 'city', 'startsAt', 'maxGuests'] as const
+const KNOWN_FIELDS = [
+  'title',
+  'description',
+  'theme',
+  'city',
+  'addressPublic',
+  'addressPrivate',
+  'startsAt',
+  'maxGuests',
+] as const
 
 export default function NewEventPage() {
   const { user, loading } = useAuth()
@@ -20,6 +29,8 @@ export default function NewEventPage() {
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('')
   const [city, setCity] = useState('')
+  const [addressPublic, setAddressPublic] = useState('')
+  const [addressPrivate, setAddressPrivate] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [maxGuests, setMaxGuests] = useState('')
   const [errors, setErrors] = useState<CreateEventErrors>({})
@@ -45,7 +56,16 @@ export default function NewEventPage() {
     e.preventDefault()
 
     // Клиентская валидация до отправки (сверена с createEventSchema)
-    const validation = validateCreateEvent({ title, description, theme, city, startsAt, maxGuests })
+    const validation = validateCreateEvent({
+      title,
+      description,
+      theme,
+      city,
+      addressPublic,
+      addressPrivate,
+      startsAt,
+      maxGuests,
+    })
     if (Object.keys(validation).length > 0) {
       setErrors(validation)
       return
@@ -61,6 +81,8 @@ export default function NewEventPage() {
         description: description.trim() || undefined,
         theme: theme || undefined,
         city: city.trim(),
+        addressPublic: addressPublic.trim(),
+        addressPrivate: addressPrivate.trim(),
         // datetime-local → UTC ISO 8601 с часовым поясом
         startsAt: new Date(startsAt).toISOString(),
         maxGuests: maxGuests === '' ? undefined : Number(maxGuests),
@@ -175,6 +197,56 @@ export default function NewEventPage() {
               placeholder="Например: Москва"
             />
             {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city}</p>}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                className="block text-sm font-medium text-gray-700 mb-1"
+                htmlFor="addressPublic"
+              >
+                Публичный адрес
+              </label>
+              <input
+                id="addressPublic"
+                type="text"
+                value={addressPublic}
+                onChange={(e) => setAddressPublic(e.target.value)}
+                maxLength={150}
+                placeholder="Например: Хамовники, квартал 3"
+                className={`w-full p-2 border rounded text-gray-900 placeholder:text-gray-400 ${errors.addressPublic ? 'border-red-500' : 'border-gray-300'}`}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Виден всем: район, квартал или ориентир без точного дома.
+              </p>
+              {errors.addressPublic && (
+                <p className="mt-1 text-sm text-red-600">{errors.addressPublic}</p>
+              )}
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-medium text-gray-700 mb-1"
+                htmlFor="addressPrivate"
+              >
+                Точный адрес
+              </label>
+              <input
+                id="addressPrivate"
+                type="text"
+                value={addressPrivate}
+                onChange={(e) => setAddressPrivate(e.target.value)}
+                maxLength={200}
+                placeholder="Улица, дом, квартира, код подъезда"
+                className={`w-full p-2 border rounded text-gray-900 placeholder:text-gray-400 ${errors.addressPrivate ? 'border-red-500' : 'border-gray-300'}`}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Видят только вы и подтверждённые участники.
+              </p>
+              {errors.addressPrivate && (
+                <p className="mt-1 text-sm text-red-600">{errors.addressPrivate}</p>
+              )}
+            </div>
           </div>
 
           <div>

@@ -8,11 +8,14 @@ import { api } from '@/lib/api'
 import Header from '@/components/Header'
 import ProfileAvatar from '@/components/ProfileAvatar'
 import CityInput from '@/components/CityInput'
+import ProfileEventCard, { type ProfileEventItem } from '@/components/ProfileEventCard'
+import { calculateAge, formatAge, formatBirthDate } from '@/lib/age'
 
 type EventItem = {
   id: string
   hostId: string
   title: string
+  theme?: string | null
   status: string
   city?: string | null
   startsAt: string
@@ -39,18 +42,6 @@ type RsvpItem = {
   }
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export default function ProfilePage() {
   const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
@@ -62,11 +53,12 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('')
   const [district, setDistrict] = useState('')
   const [profileCity, setProfileCity] = useState('')
+  const [birthDate, setBirthDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [myRsvps, setMyRsvps] = useState<RsvpItem[]>([])
-  const [rsvpsScope, setRsvpsScope] = useState<'upcoming' | 'past'>('upcoming')
-  const [myEventsScope, setMyEventsScope] = useState<'upcoming' | 'memories'>('upcoming')
+  const [upcomingRsvps, setUpcomingRsvps] = useState<RsvpItem[]>([])
+  const [pastRsvps, setPastRsvps] = useState<RsvpItem[]>([])
+  const [profileTab, setProfileTab] = useState<'hosted' | 'going' | 'archive'>('hosted')
   const [rsvpsLoading, setRsvpsLoading] = useState(true)
   const [rsvpsError, setRsvpsError] = useState('')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
@@ -103,40 +95,45 @@ export default function ProfilePage() {
     }
   }, [user])
 
-  // Загружаем «Мои записи» (upcoming/past).
+  // Загружаем записи сразу за оба периода: «Я иду» и «Архив».
   useEffect(() => {
     if (!user) return
     let cancelled = false
     setRsvpsLoading(true)
     setRsvpsError('')
-    api
-      .get<{ success: boolean; rsvps: RsvpItem[] }>(`/users/me/rsvps?scope=${rsvpsScope}`)
-      .then(async (data) => {
-        const rsvps = data.rsvps || []
+
+    const load = async (scope: 'upcoming' | 'past') => {
+      const data = await api.get<{ success: boolean; rsvps: RsvpItem[] }>(
+        `/users/me/rsvps?scope=${scope}`,
+      )
+      const rsvps = data.rsvps || []
+      // В ответе RSVP нет города события — добираем его из деталей события.
+      const ids = Array.from(new Set(rsvps.map((r) => r.eventId)))
+      const cities = await Promise.all(
+        ids.map(async (eventId) => {
+          try {
+            const detail = await api.get<{
+              success: boolean
+              event: { city?: string | null }
+            }>(`/events/${eventId}`)
+            return [eventId, detail.event.city ?? null] as const
+          } catch {
+            return [eventId, null] as const
+          }
+        }),
+      )
+      const cityById = new Map(cities)
+      return rsvps.map((r) => ({
+        ...r,
+        event: { ...r.event, city: cityById.get(r.eventId) ?? null },
+      }))
+    }
+
+    Promise.all([load('upcoming'), load('past')])
+      .then(([upcoming, past]) => {
         if (cancelled) return
-        // В ответе RSVP нет города события — добираем его из деталей события.
-        const ids = Array.from(new Set(rsvps.map((r) => r.eventId)))
-        const cities = await Promise.all(
-          ids.map(async (eventId) => {
-            try {
-              const detail = await api.get<{
-                success: boolean
-                event: { city?: string | null }
-              }>(`/events/${eventId}`)
-              return [eventId, detail.event.city ?? null] as const
-            } catch {
-              return [eventId, null] as const
-            }
-          }),
-        )
-        if (cancelled) return
-        const cityById = new Map(cities)
-        setMyRsvps(
-          rsvps.map((r) => ({
-            ...r,
-            event: { ...r.event, city: cityById.get(r.eventId) ?? null },
-          })),
-        )
+        setUpcomingRsvps(upcoming)
+        setPastRsvps(past)
       })
       .catch((err) => {
         console.error('Ошибка загрузки записей:', err)
@@ -145,10 +142,11 @@ export default function ProfilePage() {
       .finally(() => {
         if (!cancelled) setRsvpsLoading(false)
       })
+
     return () => {
       cancelled = true
     }
-  }, [user, rsvpsScope])
+  }, [user])
 
   // Показываем галочку «скопировано» пару секунд.
   useEffect(() => {
@@ -167,12 +165,13 @@ export default function ProfilePage() {
     }
   }
 
-  const handleCancelRsvp = async (rsvp: RsvpItem) => {
-    setCancelingId(rsvp.id)
+  const handleCancelRsvp = async (rsvpId: string, eventId: string) => {
+    setCancelingId(rsvpId)
     setRsvpsError('')
     try {
-      await api.delete(`/events/${rsvp.eventId}/rsvp`)
-      setMyRsvps((prev) => prev.filter((r) => r.id !== rsvp.id))
+      await api.delete(`/events/${eventId}/rsvp`)
+      setUpcomingRsvps((prev) => prev.filter((r) => r.id !== rsvpId))
+      setPastRsvps((prev) => prev.filter((r) => r.id !== rsvpId))
     } catch {
       setRsvpsError('Не удалось отменить запись. Попробуйте позже.')
     } finally {
@@ -185,6 +184,7 @@ export default function ProfilePage() {
     setBio(user?.profile?.bio || '')
     setDistrict(user?.profile?.district || '')
     setProfileCity(user?.profile?.city || '')
+    setBirthDate(user?.profile?.birthDate ? user.profile.birthDate.slice(0, 10) : '')
     setSaveError('')
     setEditing(true)
   }
@@ -205,10 +205,23 @@ export default function ProfilePage() {
       setSaveError('Город должен содержать от 2 до 50 символов')
       return
     }
+    if (birthDate) {
+      const parsed = new Date(`${birthDate}T00:00:00.000Z`)
+      if (Number.isNaN(parsed.getTime()) || parsed > new Date()) {
+        setSaveError('Укажите корректную дату рождения')
+        return
+      }
+    }
     setSaving(true)
     setSaveError('')
     try {
-      await api.patch('/users/me/profile', { nickname: nick, bio, district, city: cityValue })
+      await api.patch('/users/me/profile', {
+        nickname: nick,
+        bio,
+        district,
+        city: cityValue,
+        birthDate: birthDate || '',
+      })
       await refreshUser()
       setEditing(false)
     } catch (err) {
@@ -246,13 +259,63 @@ export default function ProfilePage() {
   }
 
   const now = Date.now()
-  const upcomingMyEvents = myEvents.filter(
-    (event) => new Date(event.startsAt).getTime() >= now,
+  const isPast = (iso: string) => new Date(iso).getTime() < now
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const age = calculateAge(user.profile?.birthDate)
+  const birthDateLabel = formatBirthDate(user.profile?.birthDate)
+
+  const hostedUpcoming = myEvents.filter((event) => !isPast(event.startsAt))
+  const hostedPast = myEvents.filter((event) => isPast(event.startsAt))
+
+  const toHostedItem = (event: EventItem): ProfileEventItem => ({
+    id: event.id,
+    title: event.title,
+    theme: event.theme,
+    city: event.city,
+    startsAt: event.startsAt,
+    status: event.status,
+    guests: event._count.guests,
+    maxGuests: event.maxGuests,
+    origin: 'hosted',
+  })
+
+  const toAttendedItem = (rsvp: RsvpItem): ProfileEventItem => ({
+    id: rsvp.event.id,
+    title: rsvp.event.title,
+    theme: rsvp.event.theme,
+    city: rsvp.event.city,
+    startsAt: rsvp.event.startsAt,
+    status: rsvp.event.status,
+    guests: rsvp.event._count.guests,
+    maxGuests: rsvp.event.maxGuests,
+    origin: 'attended',
+    rsvp: { id: rsvp.id, eventId: rsvp.eventId, status: rsvp.status },
+  })
+
+  const hostedItems = hostedUpcoming.map(toHostedItem)
+  const goingItems = upcomingRsvps.map(toAttendedItem)
+
+  const archiveMap = new Map<string, ProfileEventItem>()
+  for (const event of hostedPast) archiveMap.set(event.id, toHostedItem(event))
+  for (const rsvp of pastRsvps) {
+    if (rsvp.status !== 'approved' && rsvp.status !== 'attended') continue
+    // API может вернуть архивное событие с будущей датой — в архив берём только прошедшие.
+    if (!isPast(rsvp.event.startsAt)) continue
+    if (!archiveMap.has(rsvp.event.id)) {
+      archiveMap.set(rsvp.event.id, toAttendedItem(rsvp))
+    }
+  }
+  const archiveItems = Array.from(archiveMap.values()).sort(
+    (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime(),
   )
-  const pastMyEvents = myEvents.filter(
-    (event) => new Date(event.startsAt).getTime() < now,
-  )
-  const visibleMyEvents = myEventsScope === 'upcoming' ? upcomingMyEvents : pastMyEvents
+
+  const visibleItems =
+    profileTab === 'hosted'
+      ? hostedItems
+      : profileTab === 'going'
+        ? goingItems
+        : archiveItems
+  const listLoading = eventsLoading || rsvpsLoading
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -370,6 +433,25 @@ export default function ProfilePage() {
                   placeholder="Например: Москва"
                 />
               </div>
+              <div>
+                <label
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                  htmlFor="edit-birth-date"
+                >
+                  Дата рождения
+                </label>
+                <input
+                  id="edit-birth-date"
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  max={todayISO}
+                  className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  В публичном профиле показывается только возраст.
+                </p>
+              </div>
               <div className="flex gap-3">
                 <button
                   type="submit"
@@ -402,6 +484,21 @@ export default function ProfilePage() {
               </div>
             )}
             <div>
+              <dt className="font-medium text-gray-600">Дата рождения</dt>
+              <dd className="text-gray-800">
+                {birthDateLabel ? (
+                  <>
+                    {birthDateLabel}
+                    {age != null && (
+                      <span className="text-gray-500"> · {formatAge(age)}</span>
+                    )}
+                  </>
+                ) : (
+                  'Не указана'
+                )}
+              </dd>
+            </div>
+            <div>
               <dt className="font-medium text-gray-600">Trust Score</dt>
               <dd className="text-gray-800">{user.profile?.trustScore ?? 0}</dd>
             </div>
@@ -415,165 +512,112 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Мои события */}
+        {/* События */}
         <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Мои события</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setMyEventsScope('upcoming')}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  myEventsScope === 'upcoming'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 shadow'
-                }`}
-              >
-                Предстоящие
-              </button>
-              <button
-                onClick={() => setMyEventsScope('memories')}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  myEventsScope === 'memories'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 shadow'
-                }`}
-              >
-                Воспоминания
-              </button>
-            </div>
+          <h2 className="mb-4 text-2xl font-bold">События</h2>
+
+          <div className="mb-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setProfileTab('hosted')}
+              className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm transition hover:shadow-md"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xl">
+                📅
+              </span>
+              <span>
+                <span className="block text-lg font-bold text-gray-900">{hostedItems.length}</span>
+                <span className="block text-sm text-gray-600">
+                  предстоящих событий вы организуете
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setProfileTab('going')}
+              className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm transition hover:shadow-md"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-100 text-xl">
+                🎟️
+              </span>
+              <span>
+                <span className="block text-lg font-bold text-gray-900">{goingItems.length}</span>
+                <span className="block text-sm text-gray-600">событий, куда вы идёте</span>
+              </span>
+            </button>
           </div>
 
-          {eventsLoading ? (
+          <div className="mb-5 flex gap-6 border-b border-gray-200">
+            {(
+              [
+                { key: 'hosted', label: 'Мои события', count: hostedItems.length },
+                { key: 'going', label: 'Я иду', count: goingItems.length },
+                { key: 'archive', label: 'Архив', count: archiveItems.length },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setProfileTab(tab.key)}
+                className={`-mb-px flex items-center gap-1.5 border-b-2 px-1 pb-3 text-sm font-medium transition ${
+                  profileTab === tab.key
+                    ? 'border-blue-600 text-gray-900'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+                <span
+                  className={`text-xs ${
+                    profileTab === tab.key ? 'text-blue-600' : 'text-gray-400'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {listLoading ? (
             <p className="text-gray-600">Загрузка событий...</p>
-          ) : visibleMyEvents.length === 0 ? (
-            <p className="text-gray-600">
-              {myEventsScope === 'upcoming'
-                ? 'Вы ещё не создали ни одного предстоящего события'
-                : 'Воспоминаний пока нет'}
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {visibleMyEvents.map((ev) => (
-                <li key={ev.id}>
-                  <Link
-                    href={`/events/${ev.id}`}
-                    className="block p-4 bg-white rounded-lg shadow hover:shadow-md transition text-gray-900"
-                  >
-                    <div className="font-semibold">{ev.title}</div>
-                    <div className="text-sm text-gray-600">🕒 {formatDate(ev.startsAt)}</div>
-                    {ev.city && <div className="text-sm text-gray-600">📍 {ev.city}</div>}
-                    <div className="text-sm text-gray-600">Статус: {ev.status}</div>
-                    <div className="text-sm text-gray-600">
-                      Гостей: {ev._count.guests}
-                      {ev.maxGuests != null ? ` / ${ev.maxGuests}` : ''}
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Я иду */}
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Я иду</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setRsvpsScope('upcoming')}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  rsvpsScope === 'upcoming' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
-                }`}
-              >
-                Предстоящие
-              </button>
-              <button
-                onClick={() => setRsvpsScope('past')}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  rsvpsScope === 'past' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
-                }`}
-              >
-                Воспоминания
-              </button>
-            </div>
-          </div>
-
-          {rsvpsLoading ? (
-            <p className="text-gray-600">Загрузка записей...</p>
-          ) : rsvpsError ? (
+          ) : rsvpsError && profileTab !== 'hosted' ? (
             <p className="text-red-600">{rsvpsError}</p>
-          ) : myRsvps.length === 0 ? (
-            <div className="p-6 text-center bg-white rounded-lg shadow">
-              <p className="text-gray-600">
-                {rsvpsScope === 'past'
-                  ? 'Воспоминаний пока нет'
-                  : 'Вы пока ни на что не записаны'}
-              </p>
-              <Link href="/" className="mt-3 inline-block text-blue-600 hover:underline">
-                Смотреть события
-              </Link>
+          ) : visibleItems.length === 0 ? (
+            <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
+              {profileTab === 'hosted' ? (
+                <>
+                  <p className="text-gray-600">У вас пока нет предстоящих событий</p>
+                  <Link
+                    href="/events/new"
+                    className="mt-3 inline-block text-blue-600 hover:underline"
+                  >
+                    Создать событие
+                  </Link>
+                </>
+              ) : profileTab === 'going' ? (
+                <>
+                  <p className="text-gray-600">Вы пока никуда не идёте</p>
+                  <Link href="/" className="mt-3 inline-block text-blue-600 hover:underline">
+                    Смотреть события
+                  </Link>
+                </>
+              ) : (
+                <p className="text-gray-600">
+                  Архив пока пуст — здесь появятся прошедшие события, которые вы организовали
+                  или посетили
+                </p>
+              )}
             </div>
           ) : (
             <ul className="space-y-3">
-              {myRsvps.map((r) => {
-                const canCancel =
-                  rsvpsScope === 'upcoming' &&
-                  r.event.status === 'published' &&
-                  (r.status === 'approved' || r.status === 'pending')
-                const badge =
-                  r.status === 'attended'
-                    ? 'Присутствовал'
-                    : r.status === 'pending'
-                      ? 'Заявка на рассмотрении'
-                      : 'Записан'
-                const cancelLabel = r.status === 'pending' ? 'Отменить заявку' : 'Отменить запись'
-                return (
-                  <li key={r.id} className="relative p-4 bg-white rounded-lg shadow">
-                    <Link
-                      href={`/events/${r.event.id}`}
-                      className="font-semibold text-gray-900 hover:underline"
-                    >
-                      {r.event.title}
-                    </Link>
-                    <div className="text-sm text-gray-600 mt-1">🕒 {formatDate(r.event.startsAt)}</div>
-                    {r.event.city && <div className="text-sm text-gray-600">📍 {r.event.city}</div>}
-                    <div className="text-sm text-gray-600">
-                      Хост:{' '}
-                      <Link
-                        href={`/users/${r.event.host.id}`}
-                        className="relative z-10 text-blue-600 hover:underline"
-                      >
-                        {r.event.host.profile?.nickname || 'Без имени'}
-                      </Link>
-                    </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                          r.status === 'pending'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {badge}
-                      </span>
-                      {canCancel && (
-                        <button
-                          onClick={() => handleCancelRsvp(r)}
-                          disabled={cancelingId === r.id}
-                          className="relative z-10 px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-60"
-                        >
-                          {cancelingId === r.id ? 'Отменяем...' : cancelLabel}
-                        </button>
-                      )}
-                    </div>
-                    <Link
-                      href={`/events/${r.event.id}`}
-                      aria-label={`Открыть событие «${r.event.title}»`}
-                      className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    />
-                  </li>
-                )
-              })}
+              {visibleItems.map((item) => (
+                <ProfileEventCard
+                  key={`${item.origin}-${item.id}`}
+                  item={item}
+                  mode={profileTab}
+                  onCancel={profileTab === 'going' ? handleCancelRsvp : undefined}
+                  canceling={!!item.rsvp && cancelingId === item.rsvp.id}
+                />
+              ))}
             </ul>
           )}
         </div>

@@ -13,6 +13,7 @@ type EventItem = {
   title: string
   theme?: string | null
   city?: string | null
+  addressPublic?: string | null
   startsAt: string
   maxGuests?: number | null
   host: {
@@ -46,6 +47,59 @@ function isUpcoming(event: { startsAt: string }): boolean {
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 
+// Карточки категорий в стиле Avito: подпись сверху, крупная иллюстрация снизу справа.
+const CATEGORY_CARDS = [
+  {
+    value: '',
+    label: 'Все события',
+    emoji: '🎉',
+    gradient:
+      'from-sky-100 via-blue-50 to-white dark:from-sky-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Кино',
+    label: 'Кино',
+    emoji: '🎬',
+    gradient:
+      'from-indigo-100 via-indigo-50 to-white dark:from-indigo-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Настолки',
+    label: 'Настолки',
+    emoji: '🎲',
+    gradient:
+      'from-amber-100 via-amber-50 to-white dark:from-amber-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Музыка',
+    label: 'Музыка',
+    emoji: '🎸',
+    gradient:
+      'from-pink-100 via-pink-50 to-white dark:from-pink-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Книжный клуб',
+    label: 'Книжный клуб',
+    emoji: '📚',
+    gradient:
+      'from-emerald-100 via-emerald-50 to-white dark:from-emerald-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Мастер-класс',
+    label: 'Мастер-класс',
+    emoji: '🎨',
+    gradient:
+      'from-purple-100 via-purple-50 to-white dark:from-purple-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+  {
+    value: 'Другое',
+    label: 'Другое',
+    emoji: '✨',
+    gradient:
+      'from-slate-100 via-slate-50 to-white dark:from-slate-500/25 dark:via-slate-800 dark:to-slate-800',
+  },
+]
+
 export default function Home() {
   const { user } = useAuth()
   const { city, setCity, ready: cityReady } = useCity()
@@ -64,6 +118,17 @@ export default function Home() {
     const t = setTimeout(() => setDebouncedSearch(search), 350)
     return () => clearTimeout(t)
   }, [search])
+
+  const selectTheme = (value: string) => {
+    setActiveFeed('all')
+    setTheme(value)
+  }
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setActiveFeed('all')
+    setDebouncedSearch(search)
+  }
 
   useEffect(() => {
     if (!cityReady) return
@@ -132,52 +197,133 @@ export default function Home() {
 
       {/* Лента событий */}
       <div className="max-w-5xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold mb-4">
-          {city ? `События в ${city}` : 'Все события'}
-        </h1>
-
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setActiveFeed('all')}
-            className={`px-4 py-2 rounded text-sm font-medium transition ${
-              activeFeed === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
-            }`}
-          >
-            Все события
-          </button>
-          <button
-            onClick={() => setActiveFeed('following')}
-            className={`px-4 py-2 rounded text-sm font-medium transition ${
-              activeFeed === 'following' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
-            }`}
-          >
-            Для вас
-          </button>
-        </div>
-
-        {activeFeed === 'all' && (
-          <div className="flex gap-3 mb-6">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по названию или описанию..."
-              className="flex-1 p-2 border border-gray-300 rounded text-gray-900 placeholder:text-gray-400"
-            />
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              className="p-2 border border-gray-300 rounded text-gray-900"
+        {/* Поиск в стиле Avito: категория, строка поиска и кнопка «Найти» */}
+        <form
+          onSubmit={handleSearchSubmit}
+          className="mb-4 flex flex-col gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-gray-200 dark:ring-slate-700 sm:flex-row sm:items-center"
+        >
+          <div className="relative flex items-center gap-2 rounded-xl bg-gray-50 px-3 sm:min-w-[12rem]">
+            <svg
+              className="h-4 w-4 shrink-0 text-gray-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              <option value="">Все тематики</option>
+              <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" />
+            </svg>
+            <select
+              aria-label="Категория"
+              value={theme}
+              onChange={(e) => selectTheme(e.target.value)}
+              className="w-full appearance-none bg-transparent py-2.5 pr-7 text-sm font-medium text-gray-700 focus:outline-none dark:bg-transparent"
+            >
+              <option value="">Все категории</option>
               {THEMES.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
             </select>
+            <svg
+              className="pointer-events-none absolute right-3 h-4 w-4 text-gray-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
           </div>
-        )}
+
+          <div className="flex flex-1 items-center gap-2 rounded-xl border border-gray-300 px-3">
+            <svg
+              className="h-4 w-4 shrink-0 text-gray-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => {
+                if (activeFeed !== 'all') setActiveFeed('all')
+                setSearch(e.target.value)
+              }}
+              placeholder="Поиск по названию или описанию..."
+              aria-label="Поиск событий"
+              className="w-full bg-transparent py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:bg-transparent"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="shrink-0 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            Найти
+          </button>
+        </form>
+
+        {/* Категории событий */}
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {CATEGORY_CARDS.map((category) => {
+            const active = theme === category.value
+            return (
+              <button
+                key={category.value || 'all'}
+                type="button"
+                onClick={() => selectTheme(category.value)}
+                aria-pressed={active}
+                className={`group relative h-28 overflow-hidden rounded-2xl bg-gradient-to-br p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${category.gradient} ${
+                  active ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-200/70 dark:ring-slate-700'
+                }`}
+              >
+                <span className="relative z-10 block max-w-[70%] text-sm font-semibold leading-snug text-gray-900">
+                  {category.label}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-2 -right-1 text-5xl transition-transform duration-200 group-hover:scale-110"
+                >
+                  {category.emoji}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold">
+            {city ? `События в ${city}` : 'Все события'}
+          </h1>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveFeed('all')}
+              className={`px-4 py-2 rounded text-sm font-medium transition ${
+                activeFeed === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+              }`}
+            >
+              Все события
+            </button>
+            <button
+              onClick={() => setActiveFeed('following')}
+              className={`px-4 py-2 rounded text-sm font-medium transition ${
+                activeFeed === 'following' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 shadow'
+              }`}
+            >
+              Для вас
+            </button>
+          </div>
+        </div>
 
         {loading ? (
           <p className="text-gray-600">Загрузка событий...</p>
@@ -252,6 +398,9 @@ export default function Home() {
                             📍 {ev.city}
                           </span>
                         </p>
+                      )}
+                      {ev.addressPublic && (
+                        <p className="mt-1 text-sm text-gray-600">🏠 {ev.addressPublic}</p>
                       )}
                       <p className="text-sm text-gray-600 mt-2">🕒 {formatDateTime(ev.startsAt)}</p>
                       <div className="flex items-center gap-2 text-sm text-gray-600">

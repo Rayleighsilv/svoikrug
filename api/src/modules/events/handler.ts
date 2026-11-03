@@ -32,7 +32,7 @@ export class EventHandler {
     }
     const { id } = parsed.data
 
-    const event = await this.service.getEventById(id)
+    const event = await this.service.getEventById(id, request.userId)
     if (!event) {
       return reply.code(404).send({ error: true, message: 'Event not found' })
     }

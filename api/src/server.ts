@@ -245,7 +245,11 @@ const start = async () => {
     const eventHandler = new EventHandler(eventService)
 
     server.post('/events', { preHandler: [server.authenticate] }, eventHandler.create.bind(eventHandler))
-    server.get('/events/:id', eventHandler.getById.bind(eventHandler))
+    server.get<{ Params: { id: string } }>(
+      '/events/:id',
+      { preHandler: [server.authenticateOptional] },
+      eventHandler.getById.bind(eventHandler),
+    )
     server.get('/events', eventHandler.list.bind(eventHandler))
     server.patch<{ Params: { id: string }; Body: any }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.update.bind(eventHandler))
     server.delete<{ Params: { id: string } }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.delete.bind(eventHandler))

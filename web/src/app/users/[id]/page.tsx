@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import Avatar from '@/components/Avatar'
 import Header from '@/components/Header'
+import { formatAge } from '@/lib/age'
 
 type Profile = {
   id: string
@@ -15,6 +16,7 @@ type Profile = {
   avatarUrl?: string | null
   district?: string | null
   city?: string | null
+  age?: number | null
   trustScore: number
   isVerified: boolean
 }
@@ -200,6 +202,9 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
           <div className="flex-1">
             <h1 className="text-2xl font-bold">{profile.nickname || 'Без имени'}</h1>
             {profile.bio && <p className="text-gray-700 mt-1">{profile.bio}</p>}
+            {profile.age != null && (
+              <p className="text-sm text-gray-500 mt-1">Возраст: {formatAge(profile.age)}</p>
+            )}
             {profile.district && <p className="text-sm text-gray-500 mt-1">Район: {profile.district}</p>}
             {profile.city && (
               <p className="mt-1">

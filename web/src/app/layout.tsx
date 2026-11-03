@@ -3,6 +3,10 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CityProvider } from "@/contexts/CityContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+
+// Применяем сохранённую тему до первой отрисовки, чтобы не было вспышки светлой темы.
+const themeScript = `(function(){try{var t=localStorage.getItem('sk_theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}var d=t==='dark';document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=t}catch(e){}})()`;
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -26,13 +30,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans`}
       >
-        <AuthProvider>
-          <CityProvider>{children}</CityProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <CityProvider>{children}</CityProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

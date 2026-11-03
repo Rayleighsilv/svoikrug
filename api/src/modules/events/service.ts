@@ -19,8 +19,8 @@ export class EventService {
     })
   }
 
-  async getEventById(id: string) {
-    return this.prisma.event.findUnique({
+  async getEventById(id: string, viewerId?: string) {
+    const event = await this.prisma.event.findUnique({
       where: { id },
       include: {
         host: { select: { id: true, email: true, profile: true } },
@@ -35,6 +35,25 @@ export class EventService {
         },
       },
     })
+    if (!event) return null
+
+    // Точный адрес доступен хосту и гостям, чью заявку он подтвердил.
+    let canViewPrivateAddress = viewerId === event.hostId
+    if (viewerId && !canViewPrivateAddress) {
+      const guest = await this.prisma.eventGuest.findUnique({
+        where: { eventId_userId: { eventId: id, userId: viewerId } },
+        select: { status: true },
+      })
+      canViewPrivateAddress = guest?.status === 'approved' || guest?.status === 'attended'
+    }
+
+    const { addressPrivate, ...publicEvent } = event
+    return {
+      ...publicEvent,
+      addressPrivate: canViewPrivateAddress ? addressPrivate : null,
+      canViewPrivateAddress,
+      hasPrivateAddress: Boolean(addressPrivate),
+    }
   }
 
   async listEvents(filters?: {
@@ -86,6 +105,8 @@ export class EventService {
           },
         },
       },
+      // Точный адрес не должен попадать в публичные списки.
+      omit: { addressPrivate: true },
       orderBy: { startsAt: 'asc' },
       take: limit,
     })

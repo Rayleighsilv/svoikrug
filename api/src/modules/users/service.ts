@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { AppError } from '../../common/errors'
+import { calculateAge } from '../../common/age'
 
 export class UsersService {
   constructor(private prisma: PrismaClient) {}
@@ -17,6 +18,7 @@ export class UsersService {
             avatarUrl: true,
             district: true,
             city: true,
+            birthDate: true,
             trustScore: true,
             isVerified: true,
           },
@@ -34,6 +36,8 @@ export class UsersService {
       avatarUrl: p?.avatarUrl ?? null,
       district: p?.district ?? null,
       city: p?.city ?? null,
+      // Точную дату рождения публично не отдаём — только возраст.
+      age: calculateAge(p?.birthDate),
       trustScore: p?.trustScore ?? 0,
       isVerified: p?.isVerified ?? false,
     }
@@ -42,7 +46,14 @@ export class UsersService {
   // PATCH /users/me/profile — обновление своего профиля
   async updateMyProfile(
     userId: string,
-    input: { nickname?: string; bio?: string; district?: string; city?: string; avatarUrl?: string },
+    input: {
+      nickname?: string
+      bio?: string
+      district?: string
+      city?: string
+      birthDate?: string
+      avatarUrl?: string
+    },
   ) {
     const profile = await this.prisma.profile.findUnique({ where: { userId } })
     if (!profile) {
@@ -62,6 +73,7 @@ export class UsersService {
       bio?: string
       district?: string
       city?: string | null
+      birthDate?: Date | null
       avatarUrl?: string
     } = {}
     if (input.nickname !== undefined) data.nickname = input.nickname
@@ -69,6 +81,10 @@ export class UsersService {
     if (input.district !== undefined) data.district = input.district
     // Пустой город = очистить значение.
     if (input.city !== undefined) data.city = input.city || null
+    // Пустая дата = очистить значение.
+    if (input.birthDate !== undefined) {
+      data.birthDate = input.birthDate ? new Date(`${input.birthDate}T00:00:00.000Z`) : null
+    }
     if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl
 
     const updated = await this.prisma.profile.update({ where: { userId }, data })
@@ -79,6 +95,7 @@ export class UsersService {
       avatarUrl: updated.avatarUrl,
       district: updated.district,
       city: updated.city,
+      birthDate: updated.birthDate,
       trustScore: updated.trustScore,
       isVerified: updated.isVerified,
     }
@@ -106,6 +123,7 @@ export class UsersService {
       avatarUrl: updated.avatarUrl,
       district: updated.district,
       city: updated.city,
+      birthDate: updated.birthDate,
       trustScore: updated.trustScore,
       isVerified: updated.isVerified,
     }

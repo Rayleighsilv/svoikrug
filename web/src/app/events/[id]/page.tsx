@@ -15,6 +15,10 @@ type EventDetail = {
   description?: string | null
   theme?: string | null
   city?: string | null
+  addressPublic?: string | null
+  addressPrivate?: string | null
+  canViewPrivateAddress?: boolean
+  hasPrivateAddress?: boolean
   startsAt: string
   maxGuests?: number | null
   status: string
@@ -66,6 +70,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const id = params.id
+  const viewerId = user?.id
 
   const [event, setEvent] = useState<EventDetail | null>(null)
   const [guests, setGuests] = useState<GuestItem[]>([])
@@ -120,7 +125,9 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     return () => {
       cancelled = true
     }
-  }, [id])
+    // viewerId в зависимостях: после восстановления сессии перезапрашиваем событие,
+    // чтобы получить точный адрес, если пользователь — хост или подтверждённый гость.
+  }, [id, viewerId])
 
   const activeGuests = guests.filter((g) =>
     ['pending', 'approved', 'attended'].includes(g.status),
@@ -391,6 +398,24 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             <p className="mt-4 text-gray-700 whitespace-pre-line">{event.description}</p>
           )}
         </div>
+
+        {(event.addressPublic || event.hasPrivateAddress) && (
+          <div className="mt-6 p-6 bg-white rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-3">Адрес</h2>
+            {event.addressPublic && (
+              <p className="text-gray-700">📍 {event.addressPublic}</p>
+            )}
+            {event.canViewPrivateAddress && event.addressPrivate ? (
+              <p className="mt-2 text-gray-900">
+                <span className="font-medium">Точное место:</span> {event.addressPrivate}
+              </p>
+            ) : event.hasPrivateAddress ? (
+              <p className="mt-2 text-sm text-gray-500">
+                🔒 Точный адрес видят только организатор и подтверждённые участники.
+              </p>
+            ) : null}
+          </div>
+        )}
 
         <div className="mt-6 p-6 bg-white rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3">Организатор</h2>

@@ -156,6 +156,8 @@ export type CreateEventErrors = {
   description?: string
   theme?: string
   city?: string
+  addressPublic?: string
+  addressPrivate?: string
   startsAt?: string
   maxGuests?: string
   form?: string
@@ -166,6 +168,8 @@ export function validateCreateEvent(input: {
   description: string
   theme: string
   city: string
+  addressPublic: string
+  addressPrivate: string
   startsAt: string
   maxGuests: string
 }): CreateEventErrors {
@@ -195,6 +199,24 @@ export function validateCreateEvent(input: {
     errors.city = 'Город должен содержать минимум 2 символа'
   } else if (city.length > 50) {
     errors.city = 'Город должен быть не длиннее 50 символов'
+  }
+
+  const addressPublic = input.addressPublic.trim()
+  if (!addressPublic) {
+    errors.addressPublic = 'Укажите публичный адрес'
+  } else if (addressPublic.length < 3) {
+    errors.addressPublic = 'Публичный адрес должен содержать минимум 3 символа'
+  } else if (addressPublic.length > 150) {
+    errors.addressPublic = 'Публичный адрес должен быть не длиннее 150 символов'
+  }
+
+  const addressPrivate = input.addressPrivate.trim()
+  if (!addressPrivate) {
+    errors.addressPrivate = 'Укажите точный адрес'
+  } else if (addressPrivate.length < 3) {
+    errors.addressPrivate = 'Точный адрес должен содержать минимум 3 символа'
+  } else if (addressPrivate.length > 200) {
+    errors.addressPrivate = 'Точный адрес должен быть не длиннее 200 символов'
   }
 
   if (!input.startsAt) {

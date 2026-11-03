@@ -170,6 +170,7 @@ export class AuthService {
             avatarUrl: user.profile.avatarUrl,
             district: user.profile.district,
             city: user.profile.city,
+            birthDate: user.profile.birthDate,
             trustScore: user.profile.trustScore,
             isVerified: user.profile.isVerified,
           }

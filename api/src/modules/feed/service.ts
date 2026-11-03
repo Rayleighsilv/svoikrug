@@ -31,6 +31,8 @@ export class FeedService {
           },
         },
       },
+      // Точный адрес не должен попадать в публичные списки.
+      omit: { addressPrivate: true },
       orderBy: { startsAt: 'asc' },
       take: limit,
     })

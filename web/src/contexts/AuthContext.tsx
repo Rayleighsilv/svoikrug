@@ -9,6 +9,7 @@ type Profile = {
   avatarUrl?: string | null
   district?: string | null
   city?: string | null
+  birthDate?: string | null
   trustScore: number
   isVerified: boolean
 }

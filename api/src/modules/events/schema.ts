@@ -13,12 +13,27 @@ const citySchema = z
       .max(50, 'City must be at most 50 characters'),
   )
 
+// Публичный адрес видят все, точный — только хост и подтверждённые гости.
+const addressPublicSchema = z
+  .string()
+  .trim()
+  .min(3, 'Публичный адрес должен содержать минимум 3 символа')
+  .max(150, 'Публичный адрес должен быть не длиннее 150 символов')
+
+const addressPrivateSchema = z
+  .string()
+  .trim()
+  .min(3, 'Точный адрес должен содержать минимум 3 символа')
+  .max(200, 'Точный адрес должен быть не длиннее 200 символов')
+
 // 🔹 Схема создания события
 export const createEventSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().max(1000).optional(),
   theme: z.string().max(50).optional(),
   city: citySchema,
+  addressPublic: addressPublicSchema,
+  addressPrivate: addressPrivateSchema,
   startsAt: z.string().datetime('Must be ISO 8601 format'), // "2026-06-15T18:00:00Z"
   endsAt: z.string().datetime().optional(),
   maxGuests: z.number().int().min(1).max(100).optional(),
