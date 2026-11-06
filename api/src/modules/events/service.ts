@@ -1,29 +1,85 @@
-import { PrismaClient, EventStatus, GuestStatus } from '@prisma/client'
+import { PrismaClient, EventFormat, EventStatus, GuestStatus } from '@prisma/client'
 import { CreateEventInput, UpdateEventInput } from './schema'
 import { AppError } from '../../common/errors'
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = ['draft', 'published', 'closed', 'archived'] as const
 
+// Публичное представление тега в ответах API.
+const TAG_SELECT = {
+  slug: true,
+  label: true,
+  category: true,
+  sortOrder: true,
+} as const
+
+const TAGS_INCLUDE = {
+  tags: {
+    select: { tag: { select: TAG_SELECT } },
+    orderBy: { tag: { sortOrder: 'asc' } },
+  },
+} as const
+
+// Хост в списках: имя, аватар, рейтинг и количество отзывов.
+const HOST_PUBLIC_SELECT = {
+  id: true,
+  profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
+  _count: { select: { ratingsReceived: true } },
+} as const
+
+type EventWithTags = { tags: { tag: { slug: string; label: string; category: string; sortOrder: number } }[] }
+
+// event_tags → плоский массив тегов: клиенту не нужна структура join-таблицы.
+function serializeEvent<T extends EventWithTags>(event: T) {
+  const { tags, ...rest } = event
+  return { ...rest, tags: tags.map((row) => row.tag) }
+}
+
 export class EventService {
   constructor(private prisma: PrismaClient) {}
 
+  // Теги приходят слагами; неизвестный слаг — ошибка валидации, а не 500 от FK.
+  private async assertTagsExist(tags?: string[]) {
+    if (!tags?.length) return
+    const unique = Array.from(new Set(tags))
+    const found = await this.prisma.tag.count({ where: { slug: { in: unique } } })
+    if (found !== unique.length) {
+      throw new AppError('Unknown tag', 400, 'UNKNOWN_TAG')
+    }
+  }
+
   async createEvent(hostId: string, data: CreateEventInput) {
+    const { tags, ...eventData } = data
+    await this.assertTagsExist(tags)
+
     // Zod уже гарантирует валидность данных на входе
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
-        ...data,
+        ...eventData,
         hostId,
         status: 'draft' as EventStatus,
+        ...(tags?.length ? { tags: { create: tags.map((tagSlug) => ({ tagSlug })) } } : {}),
       } as any,
-      include: { host: { select: { email: true, profile: true } } },
+      include: {
+        host: { select: { email: true, profile: true } },
+        ...TAGS_INCLUDE,
+      },
     })
+    return serializeEvent(event)
   }
 
   async getEventById(id: string, viewerId?: string) {
     const event = await this.prisma.event.findUnique({
       where: { id },
       include: {
-        host: { select: { id: true, email: true, profile: true } },
+        host: {
+          select: {
+            id: true,
+            email: true,
+            profile: true,
+            _count: { select: { ratingsReceived: true } },
+          },
+        },
+        ...TAGS_INCLUDE,
         _count: {
           select: {
             guests: {
@@ -47,9 +103,10 @@ export class EventService {
       canViewPrivateAddress = guest?.status === 'approved' || guest?.status === 'attended'
     }
 
-    const { addressPrivate, ...publicEvent } = event
+    const { addressPrivate, tags, ...publicEvent } = event
     return {
       ...publicEvent,
+      tags: tags.map((row) => row.tag),
       addressPrivate: canViewPrivateAddress ? addressPrivate : null,
       canViewPrivateAddress,
       hasPrivateAddress: Boolean(addressPrivate),
@@ -60,11 +117,15 @@ export class EventService {
     status?: string
     district?: string
     theme?: string
+    format?: EventFormat
+    subcategory?: string
+    tag?: string
     search?: string
     city?: string
     limit?: number
   }) {
-    const { status, district, theme, search, city, limit = 20 } = filters || {}
+    const { status, district, theme, format, subcategory, tag, search, city, limit = 20 } =
+      filters || {}
 
     // Валидация статуса: только допустимые значения передаются в Prisma
     const safeStatus = status && (VALID_EVENT_STATUSES as readonly string[]).includes(status)
@@ -76,12 +137,15 @@ export class EventService {
     // Если задан поиск без явного статуса — ищем только среди опубликованных.
     const effectiveStatus = safeStatus ?? (trimmedSearch ? ('published' as EventStatus) : undefined)
 
-    return this.prisma.event.findMany({
+    const events = await this.prisma.event.findMany({
       where: {
         AND: [
           effectiveStatus ? { status: effectiveStatus } : {},
           district ? { host: { profile: { district } } } : {},
           theme ? { theme } : {},
+          format ? { format } : {},
+          subcategory ? { subcategory } : {},
+          tag ? { tags: { some: { tagSlug: tag } } } : {},
           city ? { city } : {},
           trimmedSearch
             ? {
@@ -94,7 +158,8 @@ export class EventService {
         ],
       },
       include: {
-        host: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+        host: { select: HOST_PUBLIC_SELECT },
+        ...TAGS_INCLUDE,
         _count: {
           select: {
             guests: {
@@ -110,6 +175,8 @@ export class EventService {
       orderBy: { startsAt: 'asc' },
       take: limit,
     })
+
+    return events.map((event) => serializeEvent(event))
   }
 
   async updateEvent(id: string, hostId: string, data: UpdateEventInput) {
@@ -125,12 +192,28 @@ export class EventService {
       throw new AppError('Access denied', 403, 'ACCESS_DENIED')
     }
 
-    const event = await this.prisma.event.update({
-      where: { id },
-      data: data as any,
-      include: {
-        host: { select: { email: true, profile: { select: { nickname: true } } } },
-      },
+    const { tags, ...eventData } = data
+    await this.assertTagsExist(tags)
+
+    // Теги заменяются целиком: undefined — не трогаем, [] — очищаем.
+    const event = await this.prisma.$transaction(async (tx) => {
+      if (tags !== undefined) {
+        await tx.eventTag.deleteMany({ where: { eventId: id } })
+        if (tags.length > 0) {
+          await tx.eventTag.createMany({
+            data: tags.map((tagSlug) => ({ eventId: id, tagSlug })),
+          })
+        }
+      }
+
+      return tx.event.update({
+        where: { id },
+        data: eventData as any,
+        include: {
+          host: { select: { email: true, profile: { select: { nickname: true } } } },
+          ...TAGS_INCLUDE,
+        },
+      })
     })
 
     // Уведомляем подписчиков хоста при переходе draft → published (без дублей).
@@ -151,11 +234,14 @@ export class EventService {
       }
     }
 
-    return event
+    return serializeEvent(event)
   }
 
   async deleteEvent(id: string, hostId: string) {
-    const existing = await this.prisma.event.findUnique({ where: { id }, select: { hostId: true } })
+    const existing = await this.prisma.event.findUnique({
+      where: { id },
+      select: { hostId: true, coverImageUrl: true },
+    })
     if (!existing) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
     }
@@ -164,6 +250,42 @@ export class EventService {
     }
 
     await this.prisma.event.delete({ where: { id } })
-    return { success: true }
+    // coverImageUrl нужен обработчику, чтобы удалить файл обложки с диска.
+    return { success: true, coverImageUrl: existing.coverImageUrl }
+  }
+
+  // ─── Обложка события ────────────────────────────────────────
+
+  async getCoverUrl(id: string, hostId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { hostId: true, coverImageUrl: true },
+    })
+    if (!event) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (event.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
+    }
+    return event.coverImageUrl
+  }
+
+  async setCover(id: string, hostId: string, coverImageUrl: string | null) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { hostId: true },
+    })
+    if (!event) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+    if (event.hostId !== hostId) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
+    }
+
+    return this.prisma.event.update({
+      where: { id },
+      data: { coverImageUrl },
+      select: { id: true, coverImageUrl: true },
+    })
   }
 }

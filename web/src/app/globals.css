@@ -98,6 +98,11 @@ body {
   border-color: #475569;
 }
 
+.dark .ring-gray-100,
+.dark .ring-gray-200 {
+  --tw-ring-color: #334155;
+}
+
 .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
   border-color: #334155;
 }
@@ -112,7 +117,7 @@ body {
 
 .dark input::placeholder,
 .dark textarea::placeholder {
-  color: #64748b;
+  color: #94a3b8;
 }
 
 /* Акцентные плашки и ссылки: приглушаем фон и повышаем контраст текста. */
@@ -205,4 +210,46 @@ body {
 
 .dark .text-purple-700 {
   color: #d8b4fe;
+}
+
+/* Мобильный таб-бар фиксирован снизу — оставляем место под него. */
+@media (max-width: 767px) {
+  body {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/*
+ * Видимый focus-ring для клавиатуры на всех интерактивных элементах.
+ * !important нужен, потому что часть компонентов использует outline-none.
+ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 2px;
+}
+
+.dark :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline-color: #60a5fa !important;
+}
+
+/* WCAG AA: gray-400 на светлом фоне не проходит по контрасту. */
+.text-gray-400 {
+  color: #4b5563;
+}
+
+.dark .text-gray-400 {
+  color: #94a3b8;
+}
+
+.placeholder\:text-gray-400::placeholder {
+  color: #4b5563;
+}
+
+.dark .placeholder\:text-gray-400::placeholder {
+  color: #94a3b8;
+}
+
+/* Успех-статусы: green-700 вместо green-600 — контраст ≥ 4.5:1 на белом. */
+.text-green-600 {
+  color: #15803d;
 }

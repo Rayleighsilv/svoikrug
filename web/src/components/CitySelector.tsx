@@ -56,7 +56,7 @@ export default function CitySelector() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="Выбрать город"
-        className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
         <svg className="h-4 w-4 shrink-0 text-blue-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path
@@ -65,7 +65,9 @@ export default function CitySelector() {
             clipRule="evenodd"
           />
         </svg>
-        <span className="max-w-[7.5rem] truncate sm:max-w-[11rem]">{city || 'Все города'}</span>
+        <span className="max-w-[5rem] truncate sm:max-w-[11rem]" title={city || 'Все города'}>
+          {city || 'Все города'}
+        </span>
         <svg
           className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
           viewBox="0 0 20 20"
@@ -93,6 +95,7 @@ export default function CitySelector() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Найти город..."
+              aria-label="Найти город"
               maxLength={50}
               autoComplete="off"
               className="w-full rounded border border-gray-300 p-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"

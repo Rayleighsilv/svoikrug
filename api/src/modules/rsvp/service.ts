@@ -5,7 +5,7 @@ export class RsvpService {
   constructor(private prisma: PrismaClient) {}
 
   // POST /events/:id/rsvp — записаться в гости
-  async join(userId: string, eventId: string) {
+  async join(userId: string, eventId: string, answer?: string) {
     const event = await this.prisma.event.findUnique({ where: { id: eventId } })
     if (!event) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
@@ -38,11 +38,23 @@ export class RsvpService {
       }
     }
 
+    const applicationAnswer = answer?.trim() || null
+
     // Заявка попадает хосту на подтверждение.
     const guest = await this.prisma.eventGuest.create({
-      data: { eventId, userId, status: 'pending' as GuestStatus },
+      data: {
+        eventId,
+        userId,
+        status: 'pending' as GuestStatus,
+        applicationAnswer,
+      },
       include: {
-        user: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+        user: {
+          select: {
+            id: true,
+            profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
+          },
+        },
       },
     })
 
@@ -56,6 +68,8 @@ export class RsvpService {
           guestId: userId,
           guestNickname: guest.user.profile?.nickname ?? 'Без имени',
           guestAvatarUrl: guest.user.profile?.avatarUrl ?? null,
+          guestTrustScore: guest.user.profile?.trustScore ?? 0,
+          applicationAnswer,
         },
       },
     })
@@ -72,7 +86,12 @@ export class RsvpService {
   ) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      select: { hostId: true, maxGuests: true },
+      select: {
+        hostId: true,
+        maxGuests: true,
+        title: true,
+        host: { select: { profile: { select: { nickname: true } } } },
+      },
     })
     if (!event) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
@@ -107,7 +126,12 @@ export class RsvpService {
       where: { id: guest.id },
       data: { status: decision as GuestStatus },
       include: {
-        user: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+        user: {
+          select: {
+            id: true,
+            profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
+          },
+        },
       },
     })
 
@@ -134,6 +158,20 @@ export class RsvpService {
       ),
     )
 
+    // Гость получает системное уведомление о решении по заявке.
+    await this.prisma.notification.create({
+      data: {
+        userId: guestUserId,
+        type: 'RSVP_DECISION',
+        payload: {
+          eventId,
+          eventTitle: event.title,
+          decision,
+          hostName: event.host.profile?.nickname ?? 'Хост',
+        },
+      },
+    })
+
     return updated
   }
 
@@ -149,22 +187,31 @@ export class RsvpService {
     return { success: true }
   }
 
-  // GET /events/:id/guests — список гостей события
-  async listGuests(eventId: string) {
+  // GET /events/:id/guests — список гостей события.
+  // Ответ на вопрос-фильтр — приватные данные: его видит только хост.
+  async listGuests(eventId: string, viewerId?: string) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true },
+      select: { id: true, hostId: true },
     })
     if (!event) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
     }
-    return this.prisma.eventGuest.findMany({
+    const guests = await this.prisma.eventGuest.findMany({
       where: { eventId },
       include: {
-        user: { select: { id: true, profile: { select: { nickname: true, avatarUrl: true } } } },
+        user: {
+          select: {
+            id: true,
+            profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
+          },
+        },
       },
       orderBy: { joinedAt: 'asc' },
     })
+
+    if (viewerId === event.hostId) return guests
+    return guests.map((guest) => ({ ...guest, applicationAnswer: null }))
   }
 
   // POST /events/:id/mark-attendance — хост отмечает присутствующих

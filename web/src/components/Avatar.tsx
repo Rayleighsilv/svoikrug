@@ -27,6 +27,8 @@ export default function Avatar({
       <img
         src={resolved}
         alt={name || 'Аватар'}
+        loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
         className={`${size} rounded-full object-cover`}
       />
@@ -34,7 +36,7 @@ export default function Avatar({
   }
 
   return (
-    <div className={`${size} rounded-full bg-gray-300 flex items-center justify-center font-bold text-white`}>
+    <div className={`${size} rounded-full bg-gray-300 flex items-center justify-center font-bold text-gray-700`}>
       {initial}
     </div>
   )

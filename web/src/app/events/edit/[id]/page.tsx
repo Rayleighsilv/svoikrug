@@ -7,6 +7,9 @@ import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
 import { validateCreateEvent, type CreateEventErrors } from '@/lib/validation'
 import CityInput from '@/components/CityInput'
+import TagPicker from '@/components/TagPicker'
+import EventCoverField from '@/components/EventCoverField'
+import { FORMAT_BY_SLUG, findSubcategory, type EventFormat } from '@/lib/formats'
 
 const THEMES = ['Кино', 'Настолки', 'Музыка', 'Книжный клуб', 'Мастер-класс', 'Другое']
 const KNOWN_FIELDS = [
@@ -18,6 +21,7 @@ const KNOWN_FIELDS = [
   'addressPrivate',
   'startsAt',
   'maxGuests',
+  'tags',
 ] as const
 
 type EventDetail = {
@@ -26,9 +30,13 @@ type EventDetail = {
   title: string
   description?: string | null
   theme?: string | null
+  format?: EventFormat | null
+  subcategory?: string | null
   city?: string | null
   addressPublic?: string | null
   addressPrivate?: string | null
+  coverImageUrl?: string | null
+  tags?: { slug: string; label: string }[]
   canViewPrivateAddress?: boolean
   hasPrivateAddress?: boolean
   startsAt: string
@@ -57,6 +65,9 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  const [coverRemoved, setCoverRemoved] = useState(false)
   const [city, setCity] = useState('')
   const [addressPublic, setAddressPublic] = useState('')
   const [addressPrivate, setAddressPrivate] = useState('')
@@ -81,6 +92,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
         setTitle(ev.title)
         setDescription(ev.description || '')
         setTheme(ev.theme || '')
+        setTags((ev.tags || []).map((tag) => tag.slug))
         setAddressPublic(ev.addressPublic || '')
         setAddressPrivate(ev.addressPrivate || '')
         setStartsAt(isoToDatetimeLocal(ev.startsAt))
@@ -123,6 +135,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
       addressPrivate,
       startsAt,
       maxGuests,
+      tags,
     })
     if (Object.keys(validation).length > 0) {
       setErrors(validation)
@@ -143,11 +156,22 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
         // datetime-local → UTC ISO 8601
         startsAt: new Date(startsAt).toISOString(),
         maxGuests: maxGuests === '' ? undefined : Number(maxGuests),
+        tags,
       }
       const response = await api.patch<{ success: boolean; event: { id: string } }>(
         `/events/${id}`, // eslint-disable-line
         payload,
       )
+
+      // Обложка меняется отдельными запросами после сохранения полей.
+      if (coverFile) {
+        const formData = new FormData()
+        formData.append('cover', coverFile)
+        await api.post(`/events/${response.event.id}/cover`, formData)
+      } else if (coverRemoved && event?.coverImageUrl) {
+        await api.delete(`/events/${response.event.id}/cover`)
+      }
+
       router.replace(`/events/${response.event.id}`)
     } catch (err) {
       const e = (err || {}) as {
@@ -218,11 +242,17 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
   }
 
   const themeOptions = event.theme && !THEMES.includes(event.theme) ? [...THEMES, event.theme] : THEMES
+  const subcategoryMeta = findSubcategory(event.subcategory)
+  const formatMeta = FORMAT_BY_SLUG[event.format ?? 'offline']
 
   return (
     <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Редактировать событие</h1>
+        <h1 className="text-2xl font-bold mb-2">Редактировать событие</h1>
+        <p className="mb-6 text-sm text-gray-500">
+          Формат: {formatMeta.emoji} {formatMeta.label}
+          {subcategoryMeta ? ` · ${subcategoryMeta.label}` : ''}
+        </p>
 
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow space-y-5" noValidate>
           <div>
@@ -254,6 +284,28 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
             />
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
           </div>
+
+          <EventCoverField
+            currentUrl={event.coverImageUrl}
+            file={coverFile}
+            removed={coverRemoved}
+            fallback={{
+              emoji: subcategoryMeta?.emoji ?? formatMeta.emoji,
+              gradient: formatMeta.gradient,
+            }}
+            onFileChange={(file) => {
+              setCoverFile(file)
+              if (file) setCoverRemoved(false)
+            }}
+            onRemove={() => {
+              // Если выбран новый файл — просто возвращаемся к текущей обложке.
+              if (coverFile) {
+                setCoverFile(null)
+              } else if (event.coverImageUrl) {
+                setCoverRemoved(true)
+              }
+            }}
+          />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="theme">
@@ -369,6 +421,8 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
             />
             {errors.maxGuests && <p className="mt-1 text-sm text-red-600">{errors.maxGuests}</p>}
           </div>
+
+          <TagPicker value={tags} onChange={setTags} error={errors.tags} />
 
           {formError && (
             <div className="p-3 bg-red-50 text-red-700 text-sm rounded">{formError}</div>

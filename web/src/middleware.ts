@@ -10,6 +10,7 @@ const PRIVATE_PATTERNS = [
   /^\/profile(?:\/.*)?$/,
   /^\/events\/new(?:\/.*)?$/,
   /^\/events\/edit(?:\/.*)?$/,
+  /^\/notifications(?:\/.*)?$/,
 ]
 
 // Страницы входа/регистрации: при уже существующем токене уводим на главную.
@@ -49,6 +50,7 @@ export const config = {
     '/profile/:path*',
     '/events/new/:path*',
     '/events/edit/:path*',
+    '/notifications/:path*',
     '/login',
     '/register',
   ],

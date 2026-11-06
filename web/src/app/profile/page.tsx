@@ -1,14 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
 import Header from '@/components/Header'
 import ProfileAvatar from '@/components/ProfileAvatar'
 import CityInput from '@/components/CityInput'
+import EventListSkeleton from '@/components/EventListSkeleton'
+import EventPassport from '@/components/EventPassport'
+import ProfileBadges from '@/components/ProfileBadges'
 import ProfileEventCard, { type ProfileEventItem } from '@/components/ProfileEventCard'
+import TrustScorePanel from '@/components/TrustScorePanel'
+import VerificationModal from '@/components/VerificationModal'
 import { calculateAge, formatAge, formatBirthDate } from '@/lib/age'
 
 type EventItem = {
@@ -44,6 +50,8 @@ type RsvpItem = {
 
 export default function ProfilePage() {
   const { user, loading, refreshUser } = useAuth()
+  // Город в профиле — то же состояние, что и в шапке.
+  const { city, setCity } = useCity()
   const router = useRouter()
 
   const [myEvents, setMyEvents] = useState<EventItem[]>([])
@@ -63,6 +71,9 @@ export default function ProfilePage() {
   const [rsvpsError, setRsvpsError] = useState('')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [copiedEmail, setCopiedEmail] = useState(false)
+  const [verificationOpen, setVerificationOpen] = useState(false)
+
+  const closeVerification = useCallback(() => setVerificationOpen(false), [])
 
   // Middleware уже должен отсечь гостей, но подстраховываемся в UI.
   useEffect(() => {
@@ -183,7 +194,7 @@ export default function ProfilePage() {
     setNickname(user?.profile?.nickname || '')
     setBio(user?.profile?.bio || '')
     setDistrict(user?.profile?.district || '')
-    setProfileCity(user?.profile?.city || '')
+    setProfileCity(city ?? user?.profile?.city ?? '')
     setBirthDate(user?.profile?.birthDate ? user.profile.birthDate.slice(0, 10) : '')
     setSaveError('')
     setEditing(true)
@@ -222,6 +233,8 @@ export default function ProfilePage() {
         city: cityValue,
         birthDate: birthDate || '',
       })
+      // Единый город: сохранили в профиле — сразу обновили шапку и ленту.
+      setCity(cityValue || null)
       await refreshUser()
       setEditing(false)
     } catch (err) {
@@ -246,8 +259,24 @@ export default function ProfilePage() {
     return (
       <main className="min-h-screen bg-gray-50 text-gray-900">
         <Header />
-        <div className="flex items-center justify-center p-6">
-          <p className="text-gray-500">Загрузка...</p>
+        <div className="mx-auto max-w-3xl p-4 sm:p-6" aria-busy="true" aria-label="Загрузка профиля">
+          <div className="mb-6 h-8 w-36 animate-pulse rounded bg-gray-200" />
+          <div className="rounded-lg bg-white p-6 shadow">
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 shrink-0 animate-pulse rounded-full bg-gray-200" />
+              <div className="flex-1 space-y-2">
+                <div className="h-6 w-40 animate-pulse rounded bg-gray-200" />
+                <div className="h-4 w-56 max-w-full animate-pulse rounded bg-gray-200" />
+                <div className="h-5 w-24 animate-pulse rounded-full bg-gray-200" />
+              </div>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="h-32 animate-pulse rounded-2xl bg-gray-200" />
+              <div className="h-32 animate-pulse rounded-2xl bg-gray-200" />
+            </div>
+          </div>
+          <div className="mt-8 h-6 w-32 animate-pulse rounded bg-gray-200" />
+          <div className="mt-4 h-24 animate-pulse rounded-2xl bg-gray-200" />
         </div>
       </main>
     )
@@ -358,10 +387,10 @@ export default function ProfilePage() {
                     {copiedEmail ? <CheckIcon /> : <CopyIcon />}
                   </button>
                 </div>
-                {user.profile?.city && (
+                {city && (
                   <p className="mt-1">
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      📍 {user.profile.city}
+                      📍 {city}
                     </span>
                   </p>
                 )}
@@ -470,6 +499,7 @@ export default function ProfilePage() {
               </div>
             </form>
           ) : (
+            <>
             <dl className="space-y-2 text-sm">
             {user.profile?.bio && (
               <div>
@@ -498,18 +528,56 @@ export default function ProfilePage() {
                 )}
               </dd>
             </div>
-            <div>
-              <dt className="font-medium text-gray-600">Trust Score</dt>
-              <dd className="text-gray-800">{user.profile?.trustScore ?? 0}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-gray-600">Верификация</dt>
-              <dd className="text-gray-800">
-                {user.profile?.isVerified ? 'Верифицирован' : 'Не верифицирован'}
-              </dd>
-            </div>
           </dl>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <TrustScorePanel score={user.profile?.trustScore ?? 0} />
+
+            <section
+              aria-labelledby="verification-block-title"
+              className="rounded-2xl bg-gray-50 p-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3
+                    id="verification-block-title"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Верификация
+                  </h3>
+                  {user.profile?.isVerified ? (
+                    <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                      ✓ Верифицирован
+                    </span>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-800">Не верифицирован</p>
+                  )}
+                </div>
+                {!user.profile?.isVerified && (
+                  <button
+                    type="button"
+                    onClick={() => setVerificationOpen(true)}
+                    className="rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    Пройти верификацию
+                  </button>
+                )}
+              </div>
+              {!user.profile?.isVerified && (
+                <p className="mt-3 text-xs text-gray-500">
+                  Бейдж повышает доверие и открывает доступ к закрытым сборам.
+                </p>
+              )}
+            </section>
+          </div>
+          </>
           )}
+        </div>
+
+        {/* Заглушки V1: бейджи и паспорт квартирника */}
+        <div className="mt-6 space-y-4">
+          <ProfileBadges />
+          <EventPassport />
         </div>
 
         {/* События */}
@@ -578,7 +646,7 @@ export default function ProfilePage() {
           </div>
 
           {listLoading ? (
-            <p className="text-gray-600">Загрузка событий...</p>
+            <EventListSkeleton count={2} />
           ) : rsvpsError && profileTab !== 'hosted' ? (
             <p className="text-red-600">{rsvpsError}</p>
           ) : visibleItems.length === 0 ? (
@@ -622,6 +690,8 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      <VerificationModal open={verificationOpen} onClose={closeVerification} />
     </main>
   )
 }

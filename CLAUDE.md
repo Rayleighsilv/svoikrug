@@ -15,8 +15,8 @@
 - `api/src/plugins/` — `jwt.ts`, `authenticate.ts` (выставляет `request.userId`).
 - `api/src/common/errors.ts` — `AppError(message, statusCode, code)`.
 - `api/src/server.ts` — ручная регистрация плагинов, сервисов и роутов; events-роуты объявлены здесь.
-- `web/src/app/` — App Router: `login/`, `register/`, `events/`, `profile/`, `users/`.
-- `web/src/lib/` — `api.ts` (fetch + refresh), `validation.ts` (дублирует Zod-правила бэкенда вручную).
+- `web/src/app/` — App Router: `login/`, `register/`, `events/`, `profile/`, `users/`, `format/[format]/`, `hosts/`.
+- `web/src/lib/` — `api.ts` (fetch + refresh), `validation.ts` (дублирует Zod-правила бэкенда вручную), `formats.ts` (mock-каталог форматов/подкатегорий и счётчиков недели).
 - `web/src/contexts/` — `AuthContext.tsx`, `CityContext.tsx`, `ThemeContext.tsx`; `AuthProvider` в `app/layout.tsx`.
 - `web/src/middleware.ts` — проверяет только наличие cookie `accessToken`.
 
@@ -25,6 +25,9 @@
 - Схема БД: `api/prisma/schema.prisma` — модели `User`, `Profile`, `Event`, `Tag`, `EventTag`, `EventGuest`, `Subscription`, `Rating`, `RefreshToken`, `Notification`.
 - Регистрация роутов: `api/src/server.ts` + `api/src/modules/*/routes.ts`.
 - UI авторизации: `web/src/app/login`, `web/src/app/register`.
+- Фото событий: `web/src/components/EventImage.tsx` — skeleton при загрузке, gradient+emoji при ошибке/отсутствии.
+- Создание события: `web/src/app/events/new/page.tsx` — визард из 5 шагов; черновик — `web/src/lib/eventDraft.ts` (localStorage + IndexedDB для фото). Поля визарда: `durationMinutes`, `waitlistEnabled`, `plusOneEnabled`, `houseRules`/`houseRulesChips`, `applicationQuestion`, `sportLevel`, `weatherDependent`, `budgetType`/`budgetAmount`/`budgetNote`, `venueType`, `platform`.
+- Уведомления: `web/src/app/notifications/page.tsx` и `NotificationBell` — группы «Заявки / Мои события / Системные / Безопасность». Ответ на вопрос заявки хранится в `event_guests.application_answer` и отдаётся только хосту (в публичном списке гостей — `null`).
 - Prisma CLI-конфиг: `api/prisma.config.ts`; runtime-клиент создаётся в `api/src/server.ts` через `PrismaPg`.
 - Dockerfile'ы dev: `api/Dockerfile.dev`, `web/Dockerfile.dev`.
 

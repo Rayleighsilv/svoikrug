@@ -1,12 +1,20 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { RsvpService } from './service'
-import { rsvpParamsSchema, markAttendanceSchema, guestReviewParamsSchema } from './schema'
+import {
+  rsvpParamsSchema,
+  rsvpJoinSchema,
+  markAttendanceSchema,
+  guestReviewParamsSchema,
+} from './schema'
 
 export class RsvpHandler {
   constructor(private service: RsvpService) {}
 
   // POST /events/:id/rsvp — записаться в гости
-  async join(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+  async join(
+    request: FastifyRequest<{ Params: { id: string }; Body?: { answer?: string } }>,
+    reply: FastifyReply,
+  ) {
     const parsed = rsvpParamsSchema.safeParse(request.params)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -15,10 +23,22 @@ export class RsvpHandler {
         details: parsed.error.issues,
       })
     }
+    const parsedBody = rsvpJoinSchema.safeParse(request.body ?? {})
+    if (!parsedBody.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: parsedBody.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+      })
+    }
     const { id } = parsed.data
     const userId = request.userId!
 
-    const guest = await this.service.join(userId, id)
+    const guest = await this.service.join(userId, id, parsedBody.data.answer)
     return reply.code(201).send({ success: true, guest })
   }
 
@@ -90,7 +110,7 @@ export class RsvpHandler {
     }
     const { id } = parsed.data
 
-    const guests = await this.service.listGuests(id)
+    const guests = await this.service.listGuests(id, request.userId)
     return { success: true, guests }
   }
 

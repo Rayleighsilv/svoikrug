@@ -2,86 +2,57 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
-import Avatar from '@/components/Avatar'
-
-type NotificationPayload = {
-  eventId: string
-  title?: string
-  hostName?: string
-  eventTitle?: string
-  guestId?: string
-  guestNickname?: string
-  guestAvatarUrl?: string | null
-  decision?: 'approved' | 'rejected'
-}
-
-type NotificationItem = {
-  id: string
-  type: string
-  payload: NotificationPayload
-  isRead: boolean
-  createdAt: string
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const mins = Math.floor((Date.now() - d.getTime()) / 60000)
-  if (mins < 1) return 'только что'
-  if (mins < 60) return `${mins} мин назад`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours} ч назад`
-  return d.toLocaleDateString('ru-RU')
-}
+import { useNotifications } from '@/lib/useNotifications'
+import NotificationsList from '@/components/NotificationsList'
 
 export default function NotificationBell() {
   const { user } = useAuth()
-  const router = useRouter()
   const ref = useRef<HTMLDivElement>(null)
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [open, setOpen] = useState(false)
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [reviewingId, setReviewingId] = useState<string | null>(null)
-  const [reviewError, setReviewError] = useState('')
+  const {
+    notifications,
+    loading,
+    error,
+    reviewError,
+    reviewingId,
+    load,
+    markRead,
+    markAllRead,
+    review,
+  } = useNotifications({ limit: 50 })
 
   const refreshCount = async () => {
     try {
-      const d = await api.get<{ success: boolean; count: number }>('/notifications/unread-count')
-      setUnreadCount(d.count)
+      const data = await api.get<{ success: boolean; count: number }>(
+        '/notifications/unread-count',
+      )
+      setUnreadCount(data.count)
     } catch {
       // игнорируем
     }
   }
 
-  // Обновляем бейдж при появлении пользователя и раз в 30с.
+  // Обновляем бейдж при появлении пользователя, раз в 30с и после действий
+  // на странице уведомлений.
   useEffect(() => {
     if (!user) return
-    refreshCount()
-    const t = setInterval(refreshCount, 30000)
-    return () => clearInterval(t)
+    void refreshCount()
+    const timer = setInterval(refreshCount, 30000)
+    const handler = () => void refreshCount()
+    window.addEventListener('sk:notifications-updated', handler)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('sk:notifications-updated', handler)
+    }
   }, [user])
 
-  const loadNotifications = async () => {
-    setLoading(true)
-    try {
-      const d = await api.get<{ success: boolean; notifications: NotificationItem[] }>('/notifications')
-      setNotifications(d.notifications || [])
-    } catch {
-      // игнорируем
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Закрываем панель при клике вне.
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    const handler = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
     }
     if (open) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -91,70 +62,7 @@ export default function NotificationBell() {
     const next = !open
     setOpen(next)
     if (next) {
-      setReviewError('')
-      loadNotifications()
-    }
-  }
-
-  const markRead = async (id: string) => {
-    try {
-      await api.post(`/notifications/${id}/read`)
-      await refreshCount()
-      setNotifications((prev) => prev.map((x) => (x.id === id ? { ...x, isRead: true } : x)))
-    } catch {
-      // игнорируем
-    }
-  }
-
-  const handleClick = async (n: NotificationItem) => {
-    setOpen(false)
-    router.push(`/events/${n.payload.eventId}`)
-    if (!n.isRead) await markRead(n.id)
-  }
-
-  const handleOpen = (n: NotificationItem) => {
-    setOpen(false)
-    if (!n.isRead) void markRead(n.id)
-  }
-
-  const handleMarkAll = async () => {
-    try {
-      await api.post('/notifications/read-all')
-      setUnreadCount(0)
-      setNotifications((prev) => prev.map((x) => ({ ...x, isRead: true })))
-    } catch {
-      // игнорируем
-    }
-  }
-
-  const handleReview = async (n: NotificationItem, action: 'approve' | 'reject') => {
-    const guestId = n.payload.guestId
-    if (!guestId) return
-
-    setReviewingId(n.id)
-    setReviewError('')
-    try {
-      await api.post(`/events/${n.payload.eventId}/guests/${guestId}/${action}`)
-      const decision = action === 'approve' ? 'approved' : 'rejected'
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item.id === n.id
-            ? { ...item, isRead: true, payload: { ...item.payload, decision } }
-            : item,
-        ),
-      )
-      await refreshCount()
-    } catch (err) {
-      const e = (err || {}) as { code?: string }
-      const map: Record<string, string> = {
-        EVENT_FULL: 'Свободных мест больше нет',
-        NOT_A_GUEST: 'Заявка уже неактуальна',
-        REQUEST_ALREADY_REVIEWED: 'Заявка уже обработана',
-        ACCESS_DENIED: 'Нет доступа',
-      }
-      setReviewError(e.code ? map[e.code] || 'Не удалось обработать заявку' : 'Не удалось обработать заявку')
-    } finally {
-      setReviewingId(null)
+      void load()
     }
   }
 
@@ -164,127 +72,53 @@ export default function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={handleToggle}
-        className="relative p-2 rounded hover:bg-gray-100"
-        aria-label="Уведомления"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        aria-label={unreadCount > 0 ? `Уведомления, непрочитанных: ${unreadCount}` : 'Уведомления'}
+        aria-expanded={open}
       >
         🔔
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 bg-red-600 text-white text-xs rounded-full px-1.5 min-w-[18px] text-center">
+          <span className="absolute right-0 top-0 min-w-[18px] -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 px-1.5 text-center text-xs text-white">
             {unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-          <div className="flex items-center justify-between px-4 py-2 border-b">
-            <h3 className="font-semibold text-sm">Уведомления</h3>
-            <button onClick={handleMarkAll} className="text-xs text-blue-600 hover:underline">
+        <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+            <h3 className="text-sm font-semibold">Уведомления</h3>
+            <button
+              onClick={() => void markAllRead()}
+              disabled={unreadCount === 0}
+              className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+            >
               Отметить все
             </button>
           </div>
 
-          {reviewError && (
-            <p className="border-b border-gray-100 px-4 py-2 text-xs text-red-600">{reviewError}</p>
-          )}
-
-          <div className="max-h-80 overflow-y-auto">
-            {loading ? (
-              <p className="p-4 text-sm text-gray-500">Загрузка...</p>
-            ) : notifications.length === 0 ? (
-              <p className="p-4 text-sm text-gray-500">Уведомлений нет</p>
-            ) : (
-              <ul>
-                {notifications.map((n) =>
-                  n.type === 'RSVP_REQUEST' ? (
-                    <li key={n.id} className="border-b border-gray-100 px-4 py-3">
-                      <div className="flex items-start gap-2">
-                        <Avatar
-                          url={n.payload.guestAvatarUrl}
-                          name={n.payload.guestNickname}
-                          size="w-8 h-8"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-sm ${n.isRead ? 'text-gray-500' : 'text-gray-900'}`}>
-                            {n.payload.guestId ? (
-                              <Link
-                                href={`/users/${n.payload.guestId}`}
-                                onClick={() => handleOpen(n)}
-                                className="font-medium text-blue-600 hover:underline"
-                              >
-                                {n.payload.guestNickname || 'Пользователь'}
-                              </Link>
-                            ) : (
-                              <span className="font-medium">
-                                {n.payload.guestNickname || 'Пользователь'}
-                              </span>
-                            )}{' '}
-                            хочет пойти на{' '}
-                            <Link
-                              href={`/events/${n.payload.eventId}`}
-                              onClick={() => handleOpen(n)}
-                              className="text-blue-600 hover:underline"
-                            >
-                              «{n.payload.eventTitle || 'событие'}»
-                            </Link>
-                          </p>
-                          <span className="text-xs text-gray-400">{formatTime(n.createdAt)}</span>
-
-                          {n.payload.decision ? (
-                            <p
-                              className={`mt-2 text-xs font-medium ${
-                                n.payload.decision === 'approved'
-                                  ? 'text-green-700'
-                                  : 'text-red-600'
-                              }`}
-                            >
-                              {n.payload.decision === 'approved'
-                                ? 'Заявка принята'
-                                : 'Заявка отклонена'}
-                            </p>
-                          ) : (
-                            n.payload.guestId && (
-                              <div className="mt-2 flex gap-2">
-                                <button
-                                  onClick={() => handleReview(n, 'approve')}
-                                  disabled={reviewingId === n.id}
-                                  className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-green-700 disabled:opacity-60"
-                                >
-                                  {reviewingId === n.id ? '...' : 'Принять'}
-                                </button>
-                                <button
-                                  onClick={() => handleReview(n, 'reject')}
-                                  disabled={reviewingId === n.id}
-                                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
-                                >
-                                  Отклонить
-                                </button>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  ) : (
-                    <li key={n.id}>
-                      <button
-                        onClick={() => handleClick(n)}
-                        className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-100 ${
-                          n.isRead ? 'text-gray-500' : 'text-gray-900 font-medium'
-                        }`}
-                      >
-                        <span className="block">
-                          <strong>{n.payload.hostName || 'Хост'}</strong> создал(а) сбор «
-                          {n.payload.title || 'событие'}»
-                        </span>
-                        <span className="text-xs text-gray-400">{formatTime(n.createdAt)}</span>
-                      </button>
-                    </li>
-                  ),
-                )}
-              </ul>
-            )}
+          <div className="max-h-[26rem] overflow-y-auto">
+            <NotificationsList
+              notifications={notifications}
+              loading={loading}
+              error={error}
+              reviewError={reviewError}
+              reviewingId={reviewingId}
+              compact
+              onRetry={load}
+              onReview={review}
+              onMarkRead={markRead}
+              onOpen={() => setOpen(false)}
+            />
           </div>
+
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className="block border-t border-gray-200 px-4 py-2.5 text-center text-xs font-medium text-blue-600 transition hover:bg-gray-50"
+          >
+            Все уведомления
+          </Link>
         </div>
       )}
     </div>

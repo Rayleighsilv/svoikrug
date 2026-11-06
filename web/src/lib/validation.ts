@@ -160,8 +160,11 @@ export type CreateEventErrors = {
   addressPrivate?: string
   startsAt?: string
   maxGuests?: string
+  tags?: string
   form?: string
 }
+
+export const MAX_EVENT_TAGS = 8
 
 export function validateCreateEvent(input: {
   title: string
@@ -172,8 +175,13 @@ export function validateCreateEvent(input: {
   addressPrivate: string
   startsAt: string
   maxGuests: string
+  tags?: string[]
 }): CreateEventErrors {
   const errors: CreateEventErrors = {}
+
+  if (input.tags && input.tags.length > MAX_EVENT_TAGS) {
+    errors.tags = `Можно выбрать не более ${MAX_EVENT_TAGS} тегов`
+  }
 
   const title = input.title.trim()
   if (!title) {

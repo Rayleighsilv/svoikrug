@@ -30,6 +30,9 @@ import { feedRoutes } from './modules/feed/routes'
 import { CitiesService } from './modules/cities/service'
 import { CitiesHandler } from './modules/cities/handler'
 import { cityRoutes } from './modules/cities/routes'
+import { TagsService } from './modules/tags/service'
+import { TagsHandler } from './modules/tags/handler'
+import { tagRoutes } from './modules/tags/routes'
 import { NotificationService } from './modules/notifications/service'
 import { NotificationHandler } from './modules/notifications/handler'
 import { notificationRoutes } from './modules/notifications/routes'
@@ -207,6 +210,7 @@ const start = async () => {
     // Статика: раздача загруженных файлов (GET /uploads/*)
     const uploadsRoot = path.resolve(process.cwd(), 'uploads')
     await mkdir(path.join(uploadsRoot, 'avatars'), { recursive: true })
+    await mkdir(path.join(uploadsRoot, 'events'), { recursive: true })
     await server.register(fastifyStatic, {
       root: uploadsRoot,
       prefix: '/uploads/',
@@ -253,6 +257,16 @@ const start = async () => {
     server.get('/events', eventHandler.list.bind(eventHandler))
     server.patch<{ Params: { id: string }; Body: any }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.update.bind(eventHandler))
     server.delete<{ Params: { id: string } }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.delete.bind(eventHandler))
+    server.post<{ Params: { id: string } }>(
+      '/events/:id/cover',
+      { preHandler: [server.authenticate] },
+      eventHandler.uploadCover.bind(eventHandler),
+    )
+    server.delete<{ Params: { id: string } }>(
+      '/events/:id/cover',
+      { preHandler: [server.authenticate] },
+      eventHandler.deleteCover.bind(eventHandler),
+    )
 
     // ─── RSVP-роуты ──────────────────────────────────────────────
     const rsvpService = new RsvpService(prisma)
@@ -288,6 +302,11 @@ const start = async () => {
     const citiesService = new CitiesService(prisma)
     const citiesHandler = new CitiesHandler(citiesService)
     cityRoutes(server, citiesHandler)
+
+    // ─── Справочник тегов ─────────────────────────────────────
+    const tagsService = new TagsService(prisma)
+    const tagsHandler = new TagsHandler(tagsService)
+    tagRoutes(server, tagsHandler)
 
     // ─── Health check ─────────────────────────────────────────
 

@@ -1,4 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
+import { randomUUID } from 'node:crypto'
+import { mkdir, writeFile, unlink } from 'node:fs/promises'
+import path from 'node:path'
 import { EventService } from './service'
 import {
   createEventSchema,
@@ -6,6 +9,18 @@ import {
   eventIdSchema,
   listEventsQuerySchema,
 } from './schema'
+
+const COVER_DIR = path.resolve(process.cwd(), 'uploads', 'events')
+
+// Удаляем файл обложки только если он лежит в нашей папке uploads.
+async function removeUploadedCover(coverUrl: string | null) {
+  if (!coverUrl || !coverUrl.startsWith('/uploads/events/')) return
+  try {
+    await unlink(path.join(COVER_DIR, path.basename(coverUrl)))
+  } catch {
+    // файл мог отсутствовать — игнорируем
+  }
+}
 
 export class EventHandler {
   constructor(private service: EventService) {}
@@ -46,6 +61,9 @@ export class EventHandler {
         status?: string
         district?: string
         theme?: string
+        format?: string
+        subcategory?: string
+        tag?: string
         search?: string
         limit?: string
         city?: string
@@ -106,7 +124,96 @@ export class EventHandler {
 
     const hostId = request.userId!
 
-    await this.service.deleteEvent(id, hostId)
+    const result = await this.service.deleteEvent(id, hostId)
+    await removeUploadedCover(result.coverImageUrl)
     return { success: true, message: 'Event deleted' }
+  }
+
+  // POST /events/:id/cover — загрузка обложки (multipart/form-data, поле cover)
+  async uploadCover(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsedParams = eventIdSchema.safeParse(request.params)
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Invalid event ID format',
+        details: parsedParams.error.issues,
+      })
+    }
+    const { id } = parsedParams.data
+    const hostId = request.userId!
+
+    let data: Awaited<ReturnType<FastifyRequest['file']>>
+    try {
+      data = await request.file()
+    } catch {
+      return reply
+        .code(400)
+        .send({ error: true, message: 'Invalid multipart request', code: 'INVALID_REQUEST' })
+    }
+    if (!data) {
+      return reply
+        .code(400)
+        .send({ error: true, message: 'File field "cover" is required', code: 'FILE_REQUIRED' })
+    }
+
+    const extMap: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+    }
+    const ext = extMap[data.mimetype]
+    if (!ext) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Only JPEG, PNG and WebP images are allowed',
+        code: 'INVALID_FILE_TYPE',
+      })
+    }
+
+    let buffer: Buffer
+    try {
+      buffer = await data.toBuffer()
+    } catch {
+      return reply
+        .code(413)
+        .send({ error: true, message: 'File is too large (max 2MB)', code: 'FILE_TOO_LARGE' })
+    }
+    if (buffer.length > 2 * 1024 * 1024) {
+      return reply
+        .code(413)
+        .send({ error: true, message: 'File is too large (max 2MB)', code: 'FILE_TOO_LARGE' })
+    }
+
+    // Проверяем владение до записи файла, чтобы не оставлять мусор на диске.
+    const oldCoverUrl = await this.service.getCoverUrl(id, hostId)
+
+    await mkdir(COVER_DIR, { recursive: true })
+    const filename = `${randomUUID()}.${ext}`
+    await writeFile(path.join(COVER_DIR, filename), buffer)
+
+    const event = await this.service.setCover(id, hostId, `/uploads/events/${filename}`)
+    await removeUploadedCover(oldCoverUrl)
+
+    return { success: true, event }
+  }
+
+  // DELETE /events/:id/cover — убрать обложку
+  async deleteCover(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsedParams = eventIdSchema.safeParse(request.params)
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Invalid event ID format',
+        details: parsedParams.error.issues,
+      })
+    }
+    const { id } = parsedParams.data
+    const hostId = request.userId!
+
+    const oldCoverUrl = await this.service.getCoverUrl(id, hostId)
+    const event = await this.service.setCover(id, hostId, null)
+    await removeUploadedCover(oldCoverUrl)
+
+    return { success: true, event }
   }
 }

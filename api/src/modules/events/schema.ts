@@ -26,20 +26,52 @@ const addressPrivateSchema = z
   .min(3, 'Точный адрес должен содержать минимум 3 символа')
   .max(200, 'Точный адрес должен быть не длиннее 200 символов')
 
+// Форматы встреч. Слаги совпадают с enum EventFormat в Prisma.
+export const EVENT_FORMATS = ['offline', 'sport', 'online'] as const
+const eventFormatSchema = z.enum(EVENT_FORMATS)
+const subcategorySchema = z.string().trim().min(1).max(50)
+
+// Максимум тегов на событие — синхронизировано с клиентским TagPicker.
+export const MAX_EVENT_TAGS = 8
+
+// Теги приходят слагами из справочника `tags`. Существование слагов
+// проверяет сервис (Zod не знает про БД), здесь — только формат и лимит.
+const tagsSchema = z
+  .array(z.string().trim().min(1).max(50))
+  .max(MAX_EVENT_TAGS, `Можно выбрать не более ${MAX_EVENT_TAGS} тегов`)
+  .transform((tags) => Array.from(new Set(tags)))
+  .optional()
+
 // 🔹 Схема создания события
 export const createEventSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().max(1000).optional(),
   theme: z.string().max(50).optional(),
+  format: eventFormatSchema.optional(),
+  subcategory: subcategorySchema.optional(),
   city: citySchema,
   addressPublic: addressPublicSchema,
   addressPrivate: addressPrivateSchema,
   startsAt: z.string().datetime('Must be ISO 8601 format'), // "2026-06-15T18:00:00Z"
   endsAt: z.string().datetime().optional(),
   maxGuests: z.number().int().min(1).max(100).optional(),
+  durationMinutes: z.number().int().min(15).max(720).optional(),
+  waitlistEnabled: z.boolean().optional(),
+  plusOneEnabled: z.boolean().optional(),
   rules: z.record(z.string(), z.any()).optional(), // JSONB для гибких правил
+  houseRules: z.string().trim().max(1000).optional(),
+  houseRulesChips: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+  applicationQuestion: z.string().trim().max(300).optional(),
+  sportLevel: z.enum(['beginner', 'amateur', 'pro']).optional(),
+  weatherDependent: z.boolean().optional(),
+  budgetType: z.enum(['free', 'split']).optional(),
+  budgetAmount: z.number().int().min(0).max(100000).optional(),
+  budgetNote: z.string().trim().max(200).optional(),
+  venueType: z.string().trim().max(50).optional(),
+  platform: z.string().trim().max(50).optional(),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
+  tags: tagsSchema,
 })
 
 // 🔹 Схема обновления (все поля опциональны, частичное обновление)
@@ -61,6 +93,9 @@ export const listEventsQuerySchema = z.object({
   status: z.string().optional(),
   district: z.string().optional(),
   theme: z.string().optional(),
+  format: eventFormatSchema.optional(),
+  subcategory: subcategorySchema.optional(),
+  tag: z.string().trim().min(1).max(50).optional(),
   search: z.string().optional(),
   city: z
     .string()
