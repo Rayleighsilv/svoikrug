@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./node_modules/**)",
+      "Read(./**/node_modules/**)",
+      "Read(./**/.next/**)",
+      "Read(./**/dist/**)",
+      "Read(./**/build/**)",
+      "Read(./**/coverage/**)",
+      "Read(./**/*.log)",
+      "Read(./**/.env)",
+      "Read(./**/*.env.local)",
+      "Read(./**/package-lock.json)",
+      "Read(./api/uploads/**)",
+      "Read(./**/*.dump)",
+      "Read(./api/prisma/migrations/**)"
+    ]
+  }
+}
