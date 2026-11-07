@@ -1,6 +1,13 @@
-import { PrismaClient, EventFormat, EventStatus, GuestStatus } from '@prisma/client'
+import {
+  PrismaClient,
+  EventFormat,
+  EventStatus,
+  GuestStatus,
+  ParticipantGeo,
+} from '@prisma/client'
 import { CreateEventInput, UpdateEventInput } from './schema'
 import { AppError } from '../../common/errors'
+import { chatExpiry, chatExpiryFromNow } from '../chats/service'
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = ['draft', 'published', 'closed', 'archived'] as const
 
@@ -48,15 +55,50 @@ export class EventService {
   }
 
   async createEvent(hostId: string, data: CreateEventInput) {
-    const { tags, ...eventData } = data
+    const { tags, ...rawEventData } = data
     await this.assertTagsExist(tags)
 
-    // Zod уже гарантирует валидность данных на входе
+    const format = rawEventData.format ?? 'offline'
+    const { addressPublic, addressPrivate, participantGeo, meetingLink, ...rest } = rawEventData
+    // Online: адреса не сохраняются из формы, география — из формы ('any' по умолчанию).
+    // Offline/sport: география всегда 'city', ссылка на встречу не применяется.
+    const eventData =
+      format === 'online'
+        ? {
+            ...rest,
+            format,
+            addressPublic: null,
+            addressPrivate: null,
+            participantGeo: participantGeo ?? ('any' as ParticipantGeo),
+            meetingLink: meetingLink ?? null,
+          }
+        : {
+            ...rest,
+            format,
+            addressPublic,
+            addressPrivate,
+            participantGeo: 'city' as ParticipantGeo,
+            meetingLink: null,
+          }
+
+    const startsAt = new Date(eventData.startsAt)
+    const endsAt = eventData.endsAt ? new Date(eventData.endsAt) : null
+
+    // Zod уже гарантирует валидность данных на входе.
+    // Чат создаётся вместе с событием; хост сразу становится участником.
     const event = await this.prisma.event.create({
       data: {
         ...eventData,
         hostId,
         status: 'draft' as EventStatus,
+        chat: {
+          create: {
+            title: eventData.title,
+            startsAt,
+            expiresAt: chatExpiry({ startsAt, endsAt }),
+            members: { create: { userId: hostId } },
+          },
+        },
         ...(tags?.length ? { tags: { create: tags.map((tagSlug) => ({ tagSlug })) } } : {}),
       } as any,
       include: {
@@ -103,13 +145,16 @@ export class EventService {
       canViewPrivateAddress = guest?.status === 'approved' || guest?.status === 'attended'
     }
 
-    const { addressPrivate, tags, ...publicEvent } = event
+    const { addressPrivate, meetingLink, tags, ...publicEvent } = event
     return {
       ...publicEvent,
       tags: tags.map((row) => row.tag),
       addressPrivate: canViewPrivateAddress ? addressPrivate : null,
+      // Приватная ссылка на встречу доступна по тем же правилам, что и адрес.
+      meetingLink: canViewPrivateAddress ? meetingLink : null,
       canViewPrivateAddress,
       hasPrivateAddress: Boolean(addressPrivate),
+      hasMeetingLink: Boolean(meetingLink),
     }
   }
 
@@ -119,13 +164,24 @@ export class EventService {
     theme?: string
     format?: EventFormat
     subcategory?: string
-    tag?: string
+    tag?: string[]
     search?: string
     city?: string
+    local?: boolean
     limit?: number
   }) {
-    const { status, district, theme, format, subcategory, tag, search, city, limit = 20 } =
-      filters || {}
+    const {
+      status,
+      district,
+      theme,
+      format,
+      subcategory,
+      tag,
+      search,
+      city,
+      local,
+      limit = 20,
+    } = filters || {}
 
     // Валидация статуса: только допустимые значения передаются в Prisma
     const safeStatus = status && (VALID_EVENT_STATUSES as readonly string[]).includes(status)
@@ -137,6 +193,42 @@ export class EventService {
     // Если задан поиск без явного статуса — ищем только среди опубликованных.
     const effectiveStatus = safeStatus ?? (trimmedSearch ? ('published' as EventStatus) : undefined)
 
+    // Чип «Только мой город» без города не может ничего показать.
+    if (format === 'online' && local && !city) return []
+
+    // География:
+    // - online: 'any' виден всем, 'city' — только запрошенному городу;
+    // - offline/sport: только выбранный город;
+    // - главная без format: offline/sport города + online по правилу выше.
+    let locationFilter = {}
+    if (format === 'online') {
+      if (local) {
+        locationFilter = { participantGeo: 'city', city }
+      } else if (city) {
+        locationFilter = {
+          OR: [
+            { participantGeo: 'any' },
+            { participantGeo: 'city', city },
+          ],
+        }
+      }
+    } else if (format) {
+      locationFilter = city ? { city } : {}
+    } else if (city) {
+      locationFilter = {
+        OR: [
+          { format: { in: ['offline', 'sport'] as EventFormat[] }, city },
+          {
+            format: 'online' as EventFormat,
+            OR: [
+              { participantGeo: 'any' as ParticipantGeo },
+              { participantGeo: 'city' as ParticipantGeo, city },
+            ],
+          },
+        ],
+      }
+    }
+
     const events = await this.prisma.event.findMany({
       where: {
         AND: [
@@ -145,8 +237,8 @@ export class EventService {
           theme ? { theme } : {},
           format ? { format } : {},
           subcategory ? { subcategory } : {},
-          tag ? { tags: { some: { tagSlug: tag } } } : {},
-          city ? { city } : {},
+          tag?.length ? { tags: { some: { tagSlug: { in: tag } } } } : {},
+          locationFilter,
           trimmedSearch
             ? {
                 OR: [
@@ -170,8 +262,8 @@ export class EventService {
           },
         },
       },
-      // Точный адрес не должен попадать в публичные списки.
-      omit: { addressPrivate: true },
+      // Точный адрес и ссылка на встречу не должны попадать в публичные списки.
+      omit: { addressPrivate: true, meetingLink: true },
       orderBy: { startsAt: 'asc' },
       take: limit,
     })
@@ -183,7 +275,7 @@ export class EventService {
     // Проверяем, что событие принадлежит пользователю
     const existing = await this.prisma.event.findUnique({
       where: { id },
-      select: { hostId: true, status: true },
+      select: { hostId: true, status: true, format: true },
     })
     if (!existing) {
       throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
@@ -194,6 +286,20 @@ export class EventService {
 
     const { tags, ...eventData } = data
     await this.assertTagsExist(tags)
+
+    // География и приватные поля зависят от итогового формата события.
+    const effectiveFormat = eventData.format ?? existing.format
+    if (effectiveFormat === 'online') {
+      // Адреса из формы для online игнорируются (старые значения в БД не трогаем).
+      delete eventData.addressPublic
+      delete eventData.addressPrivate
+      if (eventData.participantGeo === undefined && eventData.format === 'online') {
+        eventData.participantGeo = 'any'
+      }
+    } else {
+      eventData.participantGeo = 'city'
+      delete eventData.meetingLink
+    }
 
     // Теги заменяются целиком: undefined — не трогаем, [] — очищаем.
     const event = await this.prisma.$transaction(async (tx) => {
@@ -206,7 +312,7 @@ export class EventService {
         }
       }
 
-      return tx.event.update({
+      const updated = await tx.event.update({
         where: { id },
         data: eventData as any,
         include: {
@@ -214,6 +320,29 @@ export class EventService {
           ...TAGS_INCLUDE,
         },
       })
+
+      // Синхронизируем снимок события в чате и срок его жизни.
+      const wasFinished = existing.status === 'closed' || existing.status === 'archived'
+      const isFinished = updated.status === 'closed' || updated.status === 'archived'
+      const chatData: {
+        title: string
+        coverImageUrl: string | null
+        startsAt: Date
+        expiresAt?: Date
+      } = {
+        title: updated.title,
+        coverImageUrl: updated.coverImageUrl,
+        startsAt: updated.startsAt,
+      }
+      if (isFinished) {
+        // Закрытие/архив раньше срока: 30 дней с момента закрытия.
+        if (!wasFinished) chatData.expiresAt = chatExpiryFromNow()
+      } else {
+        chatData.expiresAt = chatExpiry(updated)
+      }
+      await tx.chat.updateMany({ where: { eventId: id }, data: chatData })
+
+      return updated
     })
 
     // Уведомляем подписчиков хоста при переходе draft → published (без дублей).
@@ -249,7 +378,16 @@ export class EventService {
       throw new AppError('Access denied', 403, 'ACCESS_DENIED')
     }
 
-    await this.prisma.event.delete({ where: { id } })
+    // Отмена события: чат остаётся доступным ещё 30 дней, затем удаляется.
+    // При удалении события eventId в чате становится null (SetNull),
+    // а снимок названия и даты сохраняется.
+    await this.prisma.$transaction([
+      this.prisma.chat.updateMany({
+        where: { eventId: id },
+        data: { expiresAt: chatExpiryFromNow() },
+      }),
+      this.prisma.event.delete({ where: { id } }),
+    ])
     // coverImageUrl нужен обработчику, чтобы удалить файл обложки с диска.
     return { success: true, coverImageUrl: existing.coverImageUrl }
   }

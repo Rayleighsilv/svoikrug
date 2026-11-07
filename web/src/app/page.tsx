@@ -13,7 +13,6 @@ import {
   type EventFormat,
 } from '@/lib/formats'
 import { meetingsWord } from '@/lib/reviews'
-import { useTags } from '@/lib/tags'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
 import CategoryTile from '@/components/CategoryTile'
 import EventCard, { type EventCardEvent } from '@/components/EventCard'
@@ -25,11 +24,6 @@ import OfflineFeed from '@/components/OfflineFeed'
 
 type EventItem = EventCardEvent
 
-const FORMAT_TABS: { value: '' | EventFormat; label: string }[] = [
-  { value: '', label: 'Все' },
-  ...FORMATS.map((format) => ({ value: format.slug, label: format.label })),
-]
-
 function isUpcoming(event: { startsAt: string }): boolean {
   const startsAt = new Date(event.startsAt).getTime()
   return !Number.isNaN(startsAt) && startsAt >= Date.now()
@@ -38,7 +32,6 @@ function isUpcoming(event: { startsAt: string }): boolean {
 export default function Home() {
   const { user } = useAuth()
   const { city, setCity, ready: cityReady } = useCity()
-  const { tags: tagCatalog } = useTags()
   const online = useOnlineStatus()
 
   const [events, setEvents] = useState<EventItem[]>([])
@@ -50,7 +43,6 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [formatFilter, setFormatFilter] = useState<'' | EventFormat>('')
-  const [tag, setTag] = useState('')
 
   // Дебаунс поискового ввода (~350 мс), чтобы не дёргать API на каждый символ.
   useEffect(() => {
@@ -87,7 +79,6 @@ export default function Home() {
 
     const params = new URLSearchParams({ limit: '200' })
     if (city) params.set('city', city)
-    if (tag) params.set('tag', tag)
     if (formatFilter) params.set('format', formatFilter)
 
     const request =
@@ -132,7 +123,7 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [activeFeed, user, debouncedSearch, formatFilter, tag, city, cityReady, online, reloadKey])
+  }, [activeFeed, user, debouncedSearch, formatFilter, city, cityReady, online, reloadKey])
 
   const activeFormat = formatFilter ? FORMAT_BY_SLUG[formatFilter] : null
   const heading = activeFormat
@@ -259,25 +250,6 @@ export default function Home() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div>
-            {/* Сегмент-табы форматов */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {FORMAT_TABS.map((tab) => (
-                <button
-                  key={tab.value || 'all'}
-                  type="button"
-                  onClick={() => setFormatFilter(tab.value)}
-                  aria-pressed={formatFilter === tab.value}
-                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                    formatFilter === tab.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 shadow'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
             {/* Плитки форматов */}
             <section aria-label="Форматы встреч" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <CategoryTile
@@ -303,43 +275,6 @@ export default function Home() {
             </section>
 
             <HostToolsPanel />
-
-            {/* Вайб-чипы */}
-            {tagCatalog.length > 0 && (
-              <div className="mb-6 flex flex-wrap items-center gap-2">
-                <span className="mr-1 text-sm font-medium text-gray-500">Вайб:</span>
-                <button
-                  type="button"
-                  onClick={() => setTag('')}
-                  aria-pressed={!tag}
-                  className={`rounded-full border px-3 py-1 text-sm transition ${
-                    !tag
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                  }`}
-                >
-                  Все
-                </button>
-                {tagCatalog.map((item) => {
-                  const active = tag === item.slug
-                  return (
-                    <button
-                      key={item.slug}
-                      type="button"
-                      onClick={() => setTag(active ? '' : item.slug)}
-                      aria-pressed={active}
-                      className={`rounded-full border px-3 py-1 text-sm transition ${
-                        active
-                          ? 'border-blue-600 bg-blue-600 text-white'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
 
             <section aria-labelledby="events-feed-title">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -422,7 +357,7 @@ export default function Home() {
                 )
               ) : formatFilter ? (
                 formatEmpty
-              ) : search.trim() || tag ? (
+              ) : search.trim() ? (
                 <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-gray-100">
                   <p className="text-lg text-gray-600">Ничего не найдено по вашему запросу</p>
                 </div>

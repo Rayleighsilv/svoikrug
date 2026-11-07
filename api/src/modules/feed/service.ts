@@ -54,7 +54,7 @@ export class FeedService {
         },
       },
       // Точный адрес не должен попадать в публичные списки.
-      omit: { addressPrivate: true },
+      omit: { addressPrivate: true, meetingLink: true },
       orderBy: { startsAt: 'asc' },
       take: limit,
     })

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv'
 import bcrypt from 'bcrypt'
-import { EventStatus, GuestStatus, PrismaClient } from '@prisma/client'
+import { EventFormat, EventStatus, GuestStatus, PrismaClient, TagCategory } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { normalizeCity } from '../src/common/city'
 
@@ -166,7 +166,138 @@ function atTime(daysFromNow: number, hour = 19): Date {
   return date
 }
 
+// Полный каталог вайбов. Порядок массива = sortOrder, group — заголовок
+// визуальной группы в визарде, formats — в каких форматах доступен вайб.
+const ALL_FORMATS: EventFormat[] = ['offline', 'sport', 'online']
+
+type SeedTag = {
+  slug: string
+  label: string
+  group: string
+  formats: EventFormat[]
+  category: TagCategory
+}
+
+const TAG_CATALOG: SeedTag[] = [
+  // ── Офлайн ─────────────────────────────────────────────
+  { slug: 'quiet-evenings', label: 'тихие вечера', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'tea-no-alcohol', label: 'чай вместо алкоголя', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'cat-at-home', label: 'кот в доме', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'guitar', label: 'гитара', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'standup', label: 'стендап', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'cooking', label: 'кулинария', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'book-swap', label: 'обмен книгами', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'cozy', label: 'лампово / уют', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'creative-mess', label: 'творческий бардак', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'byob', label: 'со своим алкоголем', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'vegan-friendly', label: 'веган-френдли', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'esoteric', label: 'эзотерика / Таро', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'standup-improv', label: 'стендап / импровизация', group: 'Офлайн-вайбы', formats: ['offline'], category: 'interest' },
+  { slug: 'loud-and-fun', label: 'шумно и весело', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+  { slug: 'phone-free', label: 'без телефонов', group: 'Офлайн-вайбы', formats: ['offline'], category: 'atmosphere' },
+
+  // ── Универсальные ──────────────────────────────────────
+  { slug: 'no-swearing', label: 'без мата', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'fashionably-late', label: 'можно опаздывать', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'introvert-friendly', label: 'интроверт-френдли', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'deep-talks', label: 'глубокие разговоры', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'networking', label: 'нетворкинг', group: 'Универсальные', formats: ALL_FORMATS, category: 'interest' },
+  { slug: 'dating', label: 'дейтинг / знакомства', group: 'Универсальные', formats: ALL_FORMATS, category: 'interest' },
+  { slug: 'geeky', label: 'гиковская тусовка', group: 'Универсальные', formats: ['offline', 'online'], category: 'interest' },
+  { slug: 'psych-games', label: 'психологические игры', group: 'Универсальные', formats: ['offline', 'online'], category: 'interest' },
+  { slug: 'early-meetups', label: 'ранние встречи', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'after-21', label: 'после 21:00', group: 'Универсальные', formats: ALL_FORMATS, category: 'atmosphere' },
+  { slug: 'board-games', label: 'настолки', group: 'Универсальные', formats: ['offline', 'online'], category: 'interest' },
+  { slug: 'cinema-talk', label: 'кино и обсуждение', group: 'Универсальные', formats: ['offline', 'online'], category: 'interest' },
+  { slug: 'kids-welcome', label: 'можно с детьми', group: 'Универсальные', formats: ['offline', 'sport'], category: 'atmosphere' },
+  { slug: 'love-debate', label: 'люблю спорить', group: 'Универсальные', formats: ['offline', 'online'], category: 'atmosphere' },
+  { slug: 'crypto-investing', label: 'криптовалюта / инвестиции', group: 'Универсальные', formats: ['offline', 'online'], category: 'interest' },
+
+  // ── Спорт и онлайн: общий уровень ──────────────────────
+  { slug: 'beginner-friendly', label: 'новичок-френдли', group: 'Уровень', formats: ['sport', 'online'], category: 'atmosphere' },
+  { slug: 'experts-only', label: 'только опытные', group: 'Уровень', formats: ['sport', 'online'], category: 'atmosphere' },
+
+  // ── Спорт ──────────────────────────────────────────────
+  { slug: 'relaxed-pace', label: 'на расслабоне', group: 'Уровень и темп', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'competitive', label: 'на результат', group: 'Уровень и темп', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'mixed-level', label: 'смешанный уровень', group: 'Уровень и темп', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'own-gear', label: 'нужен свой инвентарь', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'gear-provided', label: 'инвентарь есть', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'sportswear-required', label: 'нужна форма', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'normal-clothes-ok', label: 'можно в обычном', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'court-paid', label: 'корт оплачен', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'split-court-cost', label: 'скидываемся на корт', group: 'Организация', formats: ['sport'], category: 'interest' },
+  { slug: 'looking-teammate', label: 'ищу тиммейта', group: 'Команда', formats: ['sport'], category: 'interest' },
+  { slug: 'looking-opponent', label: 'ищу соперника', group: 'Команда', formats: ['sport'], category: 'interest' },
+  { slug: 'solo-ok', label: 'можно одному', group: 'Команда', formats: ['sport'], category: 'interest' },
+  { slug: 'pairs-only', label: 'только парами', group: 'Команда', formats: ['sport'], category: 'interest' },
+  { slug: 'any-weather', label: 'в любую погоду', group: 'Погода и место', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'sunny-only', label: 'только в солнце', group: 'Погода и место', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'evening-light', label: 'вечерний свет', group: 'Погода и место', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'near-water', label: 'у воды', group: 'Погода и место', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'forest-park', label: 'в лесу / парке', group: 'Погода и место', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'hang-after', label: 'зависаем после', group: 'После игры', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'leave-right-after', label: 'сразу расходимся', group: 'После игры', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'food-after', label: 'еда после', group: 'После игры', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'mixed-group', label: 'смешанная группа', group: 'Состав', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'women-only', label: 'только девушки', group: 'Состав', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'adults-18', label: '18+', group: 'Состав', formats: ['sport'], category: 'atmosphere' },
+  { slug: 'teens-welcome', label: 'можно с подростками', group: 'Состав', formats: ['sport'], category: 'atmosphere' },
+
+  // ── Онлайн ─────────────────────────────────────────────
+  { slug: 'camera-on', label: 'с камерой', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'camera-off', label: 'без камеры', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'mic-required', label: 'нужен микрофон', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'chat-ok', label: 'можно в чате', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'discord', label: 'Discord', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'zoom-meet', label: 'Zoom / Meet', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'steam', label: 'Steam', group: 'Связь и оборудование', formats: ['online'], category: 'interest' },
+  { slug: 'co-op', label: 'кооператив', group: 'Игровая механика', formats: ['online'], category: 'interest' },
+  { slug: 'pvp', label: 'PvP / соревновательно', group: 'Игровая механика', formats: ['online'], category: 'interest' },
+  { slug: 'roleplay', label: 'ролевая игра', group: 'Игровая механика', formats: ['online'], category: 'interest' },
+  { slug: 'chill-match', label: 'расслабленная катка', group: 'Игровая механика', formats: ['online'], category: 'atmosphere' },
+  { slug: 'ranked-push', label: 'рейтинг / рейтинг-пуш', group: 'Игровая механика', formats: ['online'], category: 'interest' },
+  { slug: 'no-toxicity', label: 'без токсичности', group: 'Атмосфера', formats: ['online'], category: 'atmosphere' },
+  { slug: 'yelling-ok', label: 'можно поорать', group: 'Атмосфера', formats: ['online'], category: 'atmosphere' },
+  { slug: 'quiet-match', label: 'тихая катка', group: 'Атмосфера', formats: ['online'], category: 'atmosphere' },
+  { slug: 'memes', label: 'мемы и лулзы', group: 'Атмосфера', formats: ['online'], category: 'atmosphere' },
+  { slug: 'serious-analysis', label: 'серьёзный разбор', group: 'Атмосфера', formats: ['online'], category: 'atmosphere' },
+  { slug: 'short-session', label: 'короткая сессия', group: 'Формат сессии', formats: ['online'], category: 'interest' },
+  { slug: 'long-session', label: 'длинная катка', group: 'Формат сессии', formats: ['online'], category: 'interest' },
+  { slug: 'regular-games', label: 'регулярные игры', group: 'Формат сессии', formats: ['online'], category: 'interest' },
+  { slug: 'one-off', label: 'одноразовая встреча', group: 'Формат сессии', formats: ['online'], category: 'interest' },
+  { slug: 'with-breaks', label: 'с перерывами', group: 'Формат сессии', formats: ['online'], category: 'interest' },
+  { slug: 'body-doubling', label: 'body doubling', group: 'Коворкинг / watch-party', formats: ['online'], category: 'interest' },
+  { slug: 'pomodoro', label: 'pomodoro', group: 'Коворкинг / watch-party', formats: ['online'], category: 'interest' },
+  { slug: 'with-discussion', label: 'с обсуждением', group: 'Коворкинг / watch-party', formats: ['online'], category: 'interest' },
+  { slug: 'silent-watch', label: 'молча смотрим', group: 'Коворкинг / watch-party', formats: ['online'], category: 'atmosphere' },
+  { slug: 'can-stream', label: 'можно стримить', group: 'Стриминг', formats: ['online'], category: 'interest' },
+  { slug: 'no-recording', label: 'без записи', group: 'Стриминг', formats: ['online'], category: 'interest' },
+  { slug: 'screen-share', label: 'с демонстрацией экрана', group: 'Стриминг', formats: ['online'], category: 'interest' },
+]
+
+async function seedTags() {
+  for (let index = 0; index < TAG_CATALOG.length; index += 1) {
+    const tag = TAG_CATALOG[index]
+    const data = {
+      label: tag.label,
+      category: tag.category,
+      sortOrder: index,
+      allowedFormats: tag.formats,
+      groupLabel: tag.group,
+    }
+    await prisma.tag.upsert({
+      where: { slug: tag.slug },
+      update: data,
+      create: { slug: tag.slug, ...data },
+    })
+  }
+  console.log(`  tags: ${TAG_CATALOG.length}`)
+}
+
 async function main() {
+  await seedTags()
+
   console.log('Removing previous seed users (seed.*@example.com)...')
   await prisma.user.deleteMany({ where: { email: { startsWith: 'seed.' } } })
 
@@ -242,10 +373,14 @@ async function main() {
         applicationQuestion,
         coverImageUrl: `https://picsum.photos/seed/svoikrug-${i + 1}/900/600`,
         city: host.city,
-        addressPublic: isOnline ? `Онлайн · ${venue}` : `${host.city}, ${host.district}, квартал ${1 + (i % 9)}`,
+        addressPublic: isOnline
+          ? null
+          : `${host.city}, ${host.district}, квартал ${1 + (i % 9)}`,
         addressPrivate: isOnline
-          ? `Ссылка на ${venue} придёт после подтверждения`
+          ? null
           : `${STREETS[i % STREETS.length]}, д. ${1 + (i % 30)}, кв. ${1 + (i % 60)}, код ${1000 + i}`,
+        participantGeo: isOnline ? (i % 3 === 0 ? 'city' : 'any') : 'city',
+        meetingLink: isOnline ? `https://discord.gg/svoikrug-${i + 1}` : null,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 8 + (i % 15),
@@ -332,11 +467,13 @@ async function main() {
         coverImageUrl: `https://picsum.photos/seed/svoikrug-past-${i + 1}/900/600`,
         city: host.city,
         addressPublic: isOnline
-          ? `Онлайн · ${venue}`
+          ? null
           : `${host.city}, ${host.district}, квартал ${1 + ((i + 2) % 9)}`,
         addressPrivate: isOnline
-          ? `Ссылка на ${venue} придёт после подтверждения`
+          ? null
           : `${STREETS[(i + 2) % STREETS.length]}, д. ${1 + ((i + 2) % 30)}, кв. ${1 + ((i + 2) % 60)}, код ${1000 + i}`,
+        participantGeo: isOnline ? 'any' : 'city',
+        meetingLink: isOnline ? `https://discord.gg/svoikrug-past-${i + 1}` : null,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 8 + ((i + 4) % 15),
@@ -411,11 +548,13 @@ async function main() {
         coverImageUrl: `https://picsum.photos/seed/svoikrug-extra-${i + 1}/900/600`,
         city: host.city,
         addressPublic: isOnline
-          ? `Онлайн · ${venue}`
+          ? null
           : `${host.city}, ${host.district}, квартал ${1 + ((i + 5) % 9)}`,
         addressPrivate: isOnline
-          ? `Ссылка на ${venue} придёт после подтверждения`
+          ? null
           : `${STREETS[(i + 5) % STREETS.length]}, д. ${1 + ((i + 5) % 30)}, кв. ${1 + ((i + 5) % 60)}, код ${1000 + i}`,
+        participantGeo: isOnline ? 'any' : 'city',
+        meetingLink: isOnline ? `https://discord.gg/svoikrug-extra-${i + 1}` : null,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 3 * 60 * 60 * 1000),
         maxGuests: 12 + i * 4,

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import FavoriteButton from '@/components/FavoriteButton'
 
 export type ProfileEventItem = {
   id: string
@@ -104,6 +105,16 @@ export default function ProfileEventCard({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <FavoriteButton
+          event={{
+            id: item.id,
+            title: item.title,
+            theme: item.theme,
+            city: item.city,
+            startsAt: item.startsAt,
+          }}
+          className="relative z-10"
+        />
         {canCancel && item.rsvp && (
           <button
             type="button"

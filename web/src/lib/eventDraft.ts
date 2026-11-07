@@ -2,9 +2,10 @@ import { findSubcategory, type EventFormat } from './formats'
 
 export type DraftSportLevel = '' | 'beginner' | 'amateur' | 'pro'
 export type DraftBudgetType = 'free' | 'split'
+export type DraftParticipantGeo = 'any' | 'city'
 
 export type EventDraft = {
-  version: 1
+  version: 2
   step: number
   title: string
   description: string
@@ -15,6 +16,8 @@ export type EventDraft = {
   addressPrivate: string
   venueType: string
   platform: string
+  meetingLink: string
+  participantGeo: DraftParticipantGeo
   startsAt: string
   durationMinutes: number
   maxGuests: string
@@ -34,7 +37,8 @@ export type EventDraft = {
 
 export type EventDraftData = Omit<EventDraft, 'version' | 'savedAt'>
 
-export const DRAFT_VERSION = 1
+export const DRAFT_VERSION = 2
+// Ключ не меняем: черновики версии 1 должны восстанавливаться после обновления.
 const DRAFT_KEY = 'sk_event_draft_v1'
 const DB_NAME = 'sk_event_draft'
 const STORE = 'covers'
@@ -52,6 +56,8 @@ export function defaultDraft(): EventDraftData {
     addressPrivate: '',
     venueType: 'court',
     platform: 'discord',
+    meetingLink: '',
+    participantGeo: 'any',
     startsAt: '',
     durationMinutes: 180,
     maxGuests: '',
@@ -83,8 +89,12 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
-function normalizeDraft(input: Partial<EventDraft> | null): EventDraft | null {
-  if (!input || input.version !== DRAFT_VERSION) return null
+type StoredDraft = Omit<Partial<EventDraft>, 'version'> & { version?: number }
+
+function normalizeDraft(input: StoredDraft | null): EventDraft | null {
+  if (!input) return null
+  // Принимаем черновики v1: version повышается без потери полей.
+  if (input.version !== 1 && input.version !== DRAFT_VERSION) return null
   const defaults = defaultDraft()
 
   const format: EventFormat =
@@ -104,6 +114,10 @@ function normalizeDraft(input: Partial<EventDraft> | null): EventDraft | null {
       : ''
   const budgetType: DraftBudgetType =
     input.budgetType === 'split' ? 'split' : 'free'
+  const participantGeo: DraftParticipantGeo =
+    input.participantGeo === 'city' ? 'city' : 'any'
+  // У online-события адресов больше нет — старые значения отбрасываем без ошибки.
+  const isOnline = format === 'online'
   const step =
     typeof input.step === 'number' && Number.isInteger(input.step)
       ? Math.min(4, Math.max(0, input.step))
@@ -126,10 +140,16 @@ function normalizeDraft(input: Partial<EventDraft> | null): EventDraft | null {
     format,
     subcategory,
     city: asString(input.city, defaults.city),
-    addressPublic: asString(input.addressPublic, defaults.addressPublic),
-    addressPrivate: asString(input.addressPrivate, defaults.addressPrivate),
+    addressPublic: isOnline
+      ? ''
+      : asString(input.addressPublic, defaults.addressPublic),
+    addressPrivate: isOnline
+      ? ''
+      : asString(input.addressPrivate, defaults.addressPrivate),
     venueType: asString(input.venueType, defaults.venueType),
     platform: asString(input.platform, defaults.platform),
+    meetingLink: asString(input.meetingLink, defaults.meetingLink),
+    participantGeo,
     startsAt: asString(input.startsAt, defaults.startsAt),
     durationMinutes,
     maxGuests: asString(input.maxGuests, defaults.maxGuests),
@@ -153,7 +173,7 @@ export function loadDraft(): EventDraft | null {
   try {
     const raw = window.localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
-    return normalizeDraft(JSON.parse(raw) as Partial<EventDraft>)
+    return normalizeDraft(JSON.parse(raw) as StoredDraft)
   } catch {
     return null
   }

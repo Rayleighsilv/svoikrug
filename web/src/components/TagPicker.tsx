@@ -1,22 +1,39 @@
 'use client'
 
-import { useTags } from '@/lib/tags'
+import type { EventFormat } from '@/lib/formats'
+import { isTagAllowed, useTags, type Tag } from '@/lib/tags'
 import { MAX_EVENT_TAGS } from '@/lib/validation'
 
 /**
- * Облако тегов для формы события. Категории (атмосфера/формат/интересы)
- * хранятся в БД, но в UI намеренно не показываются — теги идут единым списком.
+ * Облако вайбов для формы события. Список зависит от формата события,
+ * чипы сгруппированы по подкатегориям (groupLabel из справочника).
  */
 export default function TagPicker({
   value,
   onChange,
+  format,
   error,
 }: {
   value: string[]
   onChange: (tags: string[]) => void
+  format: EventFormat
   error?: string
 }) {
   const { tags, loading } = useTags()
+
+  const available = tags.filter((tag) => isTagAllowed(tag, format))
+
+  // Группы идут в порядке sortOrder из API, поэтому склеиваем соседние.
+  const groups: { label: string; items: Tag[] }[] = []
+  for (const tag of available) {
+    const label = tag.groupLabel || 'Вайбы'
+    const last = groups[groups.length - 1]
+    if (last && last.label === label) {
+      last.items.push(tag)
+    } else {
+      groups.push({ label, items: [tag] })
+    }
+  }
 
   const toggle = (slug: string) => {
     if (value.includes(slug)) {
@@ -43,30 +60,39 @@ export default function TagPicker({
 
       {loading ? (
         <p className="text-sm text-gray-400">Загружаем теги...</p>
-      ) : tags.length === 0 ? (
-        <p className="text-sm text-gray-400">Теги пока недоступны</p>
+      ) : available.length === 0 ? (
+        <p className="text-sm text-gray-400">Для этого формата пока нет вайбов</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => {
-            const active = value.includes(tag.slug)
-            const disabled = !active && value.length >= MAX_EVENT_TAGS
-            return (
-              <button
-                key={tag.slug}
-                type="button"
-                aria-pressed={active}
-                disabled={disabled}
-                onClick={() => toggle(tag.slug)}
-                className={`rounded-full border px-3 py-1 text-sm transition ${
-                  active
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700'
-                } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
-              >
-                {tag.label}
-              </button>
-            )
-          })}
+        <div className="space-y-3">
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {group.label}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {group.items.map((tag) => {
+                  const active = value.includes(tag.slug)
+                  const disabled = !active && value.length >= MAX_EVENT_TAGS
+                  return (
+                    <button
+                      key={tag.slug}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={disabled}
+                      onClick={() => toggle(tag.slug)}
+                      className={`rounded-full border px-3 py-1 text-sm transition ${
+                        active
+                          ? 'border-blue-600 bg-blue-600 text-white'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700'
+                      } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+                    >
+                      {tag.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

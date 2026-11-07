@@ -60,7 +60,9 @@ export default function EventWizardPreview({
     format: form.format,
     subcategory: form.subcategory || null,
     city: form.city.trim() || null,
-    addressPublic: form.addressPublic.trim() || null,
+    participantGeo: form.participantGeo,
+    addressPublic:
+      form.format === 'online' ? null : form.addressPublic.trim() || null,
     coverImageUrl: coverUrl,
     startsAt,
     maxGuests,
@@ -113,9 +115,13 @@ export default function EventWizardPreview({
           )}
 
           <div className="mt-2 space-y-1 text-sm text-gray-600">
-            {form.city.trim() && <p>📍 {form.city.trim()}</p>}
-            {form.addressPublic.trim() && <p>🏠 {form.addressPublic.trim()}</p>}
-            {form.addressPrivate.trim() && (
+            {form.format === 'online'
+              ? form.city.trim() && <p>🏡 Хост из {form.city.trim()}</p>
+              : form.city.trim() && <p>📍 {form.city.trim()}</p>}
+            {form.format !== 'online' && form.addressPublic.trim() && (
+              <p>🏠 {form.addressPublic.trim()}</p>
+            )}
+            {form.format !== 'online' && form.addressPrivate.trim() && (
               <p className="text-gray-500">Точный адрес: {form.addressPrivate.trim()}</p>
             )}
             <p>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import type { EventFormat } from './formats'
 
 export type TagCategory = 'atmosphere' | 'format' | 'interest'
 
@@ -10,6 +11,14 @@ export type Tag = {
   label: string
   category: TagCategory
   sortOrder: number
+  groupLabel: string | null
+  allowedFormats: EventFormat[]
+}
+
+// Вайб доступен в формате, если формат есть в allowedFormats.
+// Пустое/отсутствующее поле (старый API) трактуем как «во всех форматах».
+export function isTagAllowed(tag: Tag, format: EventFormat): boolean {
+  return !tag.allowedFormats?.length || tag.allowedFormats.includes(format)
 }
 
 // Справочник тегов статичен в рамках сессии — кэшируем на уровне модуля,

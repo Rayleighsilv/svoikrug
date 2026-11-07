@@ -2,6 +2,8 @@
 // (api/src/modules/auth/schema.ts). Правила email/пароля/ника должны
 // точно совпадать с серверными, чтобы ошибки не «расходились».
 
+import type { EventFormat } from './formats'
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UPPERCASE_RE = /[A-ZА-Я]/
 const LOWERCASE_RE = /[a-zа-я]/
@@ -158,6 +160,8 @@ export type CreateEventErrors = {
   city?: string
   addressPublic?: string
   addressPrivate?: string
+  meetingLink?: string
+  participantGeo?: string
   startsAt?: string
   maxGuests?: string
   tags?: string
@@ -170,6 +174,7 @@ export function validateCreateEvent(input: {
   title: string
   description: string
   theme: string
+  format?: EventFormat
   city: string
   addressPublic: string
   addressPrivate: string
@@ -209,22 +214,25 @@ export function validateCreateEvent(input: {
     errors.city = 'Город должен быть не длиннее 50 символов'
   }
 
-  const addressPublic = input.addressPublic.trim()
-  if (!addressPublic) {
-    errors.addressPublic = 'Укажите публичный адрес'
-  } else if (addressPublic.length < 3) {
-    errors.addressPublic = 'Публичный адрес должен содержать минимум 3 символа'
-  } else if (addressPublic.length > 150) {
-    errors.addressPublic = 'Публичный адрес должен быть не длиннее 150 символов'
-  }
+  // У онлайн-события адресов нет — поля скрыты в форме и не проверяются.
+  if (input.format !== 'online') {
+    const addressPublic = input.addressPublic.trim()
+    if (!addressPublic) {
+      errors.addressPublic = 'Укажите публичный адрес'
+    } else if (addressPublic.length < 3) {
+      errors.addressPublic = 'Публичный адрес должен содержать минимум 3 символа'
+    } else if (addressPublic.length > 150) {
+      errors.addressPublic = 'Публичный адрес должен быть не длиннее 150 символов'
+    }
 
-  const addressPrivate = input.addressPrivate.trim()
-  if (!addressPrivate) {
-    errors.addressPrivate = 'Укажите точный адрес'
-  } else if (addressPrivate.length < 3) {
-    errors.addressPrivate = 'Точный адрес должен содержать минимум 3 символа'
-  } else if (addressPrivate.length > 200) {
-    errors.addressPrivate = 'Точный адрес должен быть не длиннее 200 символов'
+    const addressPrivate = input.addressPrivate.trim()
+    if (!addressPrivate) {
+      errors.addressPrivate = 'Укажите точный адрес'
+    } else if (addressPrivate.length < 3) {
+      errors.addressPrivate = 'Точный адрес должен содержать минимум 3 символа'
+    } else if (addressPrivate.length > 200) {
+      errors.addressPrivate = 'Точный адрес должен быть не длиннее 200 символов'
+    }
   }
 
   if (!input.startsAt) {

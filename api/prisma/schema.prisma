@@ -28,6 +28,12 @@ enum EventFormat {
   online
 }
 
+// География участия онлайн-встречи: «любой город» или «только город хоста».
+enum ParticipantGeo {
+  any
+  city
+}
+
 enum SportLevel {
   beginner
   amateur
@@ -75,6 +81,8 @@ model User {
   ratingsReceived Rating[] @relation("Rated")
   refreshTokens RefreshToken[]
   notifications     Notification[]
+  chatMemberships   ChatMember[]
+  chatMessages      ChatMessage[]
 
   @@map("users")
   @@index([email])
@@ -129,6 +137,9 @@ model Event {
   budgetNote         String?   @map("budget_note")
   venueType          String?   @map("venue_type")
   platform           String?   @map("platform")
+  // Приватная ссылка на онлайн-встречу: доступ как у addressPrivate.
+  meetingLink        String?   @map("meeting_link")
+  participantGeo     ParticipantGeo @default(any) @map("participant_geo")
   lat         Float?      @map("lat")
   lng         Float?      @map("lng")
   createdAt   DateTime    @default(now()) @map("created_at")
@@ -136,6 +147,7 @@ model Event {
   guests      EventGuest[]
   ratings     Rating[]
   tags        EventTag[]
+  chat        Chat?
 
   @@map("events")
   @@index([hostId])
@@ -153,11 +165,16 @@ model Tag {
   label     String      @map("label")
   category  TagCategory @map("category")
   sortOrder Int         @default(0) @map("sort_order")
+  // Форматы, в которых доступен вайб. Пустой массив трактуем как «во всех».
+  allowedFormats EventFormat[] @default([offline, sport, online]) @map("allowed_formats")
+  // Заголовок группы для визуального разделения чипов в визарде.
+  groupLabel String? @map("group_label")
 
   events    EventTag[]
 
   @@map("tags")
   @@index([category, sortOrder])
+  @@index([sortOrder])
 }
 
 model EventTag {
@@ -252,4 +269,53 @@ model Notification {
   @@index([userId, isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// Чат события: создаётся автоматически вместе с событием.
+// expiresAt — момент, после которого чат удаляется (окончание события или
+// отмена + 30 дней). Чистка ленивая: при обращении к чат-эндпоинтам.
+model Chat {
+  id            String   @id @default(uuid())
+  eventId       String?  @unique @map("event_id")
+  event         Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  // Снимок события: чат переживает удаление события на 30 дней.
+  title         String
+  coverImageUrl String?  @map("cover_image_url")
+  startsAt      DateTime @map("starts_at")
+  expiresAt     DateTime @map("expires_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  @@index([expiresAt])
+  @@map("chats")
+}
+
+model ChatMember {
+  chatId     String   @map("chat_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  joinedAt   DateTime @default(now()) @map("joined_at")
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([chatId, userId])
+  @@index([userId])
+  @@map("chat_members")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  chatId    String   @map("chat_id")
+  senderId  String   @map("sender_id")
+  text      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("chat_messages")
 }

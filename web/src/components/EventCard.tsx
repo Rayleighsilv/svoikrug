@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import EventImage from '@/components/EventImage'
+import FavoriteButton from '@/components/FavoriteButton'
 import { formatEventDateTime } from '@/lib/date'
 import { FORMAT_BY_SLUG, findSubcategory, type EventFormat } from '@/lib/formats'
 import { reviewsWord } from '@/lib/reviews'
@@ -15,6 +16,7 @@ export type EventCardEvent = {
   format?: EventFormat | null
   subcategory?: string | null
   city?: string | null
+  participantGeo?: 'any' | 'city' | null
   addressPublic?: string | null
   coverImageUrl?: string | null
   startsAt: string
@@ -40,6 +42,10 @@ export default function EventCard({
   const themeLabel = subcategory?.label ?? event.theme
   const reviews = event.host._count?.ratingsReceived ?? 0
   const score = event.host.profile?.trustScore ?? 0
+  const isOnline = event.format === 'online'
+  // «Онлайн · любой город» или «Онлайн · Москва».
+  const geoLabel =
+    event.participantGeo === 'city' && event.city ? event.city : 'любой город'
 
   return (
     <li className="relative flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 transition hover:shadow-md sm:flex-row">
@@ -57,13 +63,16 @@ export default function EventCard({
         <div className="flex flex-wrap items-start gap-2">
           <h2 className="text-lg font-semibold text-gray-900">{event.title}</h2>
           <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-            {formatMeta.emoji} {formatMeta.shortLabel}
+            {formatMeta.emoji}{' '}
+            {isOnline ? `${formatMeta.shortLabel} · ${geoLabel}` : formatMeta.shortLabel}
           </span>
         </div>
         {themeLabel && <p className="mt-0.5 text-sm text-gray-500">Тема: {themeLabel}</p>}
         <div className="mt-2 space-y-1 text-sm text-gray-600">
-          {event.city && <p>📍 {event.city}</p>}
-          {event.addressPublic && <p>🏠 {event.addressPublic}</p>}
+          {isOnline
+            ? event.city && <p>🏡 Хост из {event.city}</p>
+            : event.city && <p>📍 {event.city}</p>}
+          {!isOnline && event.addressPublic && <p>🏠 {event.addressPublic}</p>}
           <p>🕒 {formatEventDateTime(event.startsAt)}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {event.maxGuests != null ? (
@@ -132,6 +141,21 @@ export default function EventCard({
           </div>
         </div>
       </div>
+
+      <FavoriteButton
+        event={{
+          id: event.id,
+          title: event.title,
+          coverImageUrl: event.coverImageUrl,
+          theme: event.theme,
+          subcategory: event.subcategory,
+          format: event.format,
+          city: event.city,
+          startsAt: event.startsAt,
+          hostName: event.host.profile?.nickname ?? null,
+        }}
+        className="absolute right-3 top-3 z-10 bg-white/90 shadow-sm backdrop-blur"
+      />
 
       {href !== null && (
         <Link

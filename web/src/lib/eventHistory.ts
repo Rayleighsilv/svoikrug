@@ -17,6 +17,7 @@ export type StoredEvent = {
 const VIEWED_KEY = 'sk_viewed_events'
 const SAVED_KEY = 'sk_saved_events'
 const LIMIT = 8
+const SAVED_LIMIT = 50
 const HISTORY_EVENT = 'sk:event-history'
 
 function read(key: string): StoredEvent[] {
@@ -76,7 +77,7 @@ export function toggleSavedEvent(event: StoredEvent): boolean {
   const exists = list.some((item) => item.id === event.id)
   const next = exists
     ? list.filter((item) => item.id !== event.id)
-    : [event, ...list].slice(0, LIMIT)
+    : [event, ...list].slice(0, SAVED_LIMIT)
   write(SAVED_KEY, next)
   emit()
   return !exists

@@ -63,10 +63,11 @@ export class EventHandler {
         theme?: string
         format?: string
         subcategory?: string
-        tag?: string
+        tag?: string | string[]
         search?: string
         limit?: string
         city?: string
+        local?: string
       }
     }>,
     reply: FastifyReply,

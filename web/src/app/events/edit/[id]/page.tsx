@@ -19,6 +19,8 @@ const KNOWN_FIELDS = [
   'city',
   'addressPublic',
   'addressPrivate',
+  'meetingLink',
+  'participantGeo',
   'startsAt',
   'maxGuests',
   'tags',
@@ -35,6 +37,8 @@ type EventDetail = {
   city?: string | null
   addressPublic?: string | null
   addressPrivate?: string | null
+  meetingLink?: string | null
+  participantGeo?: 'any' | 'city'
   coverImageUrl?: string | null
   tags?: { slug: string; label: string }[]
   canViewPrivateAddress?: boolean
@@ -71,6 +75,8 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
   const [city, setCity] = useState('')
   const [addressPublic, setAddressPublic] = useState('')
   const [addressPrivate, setAddressPrivate] = useState('')
+  const [meetingLink, setMeetingLink] = useState('')
+  const [participantGeo, setParticipantGeo] = useState<'any' | 'city'>('any')
   const [startsAt, setStartsAt] = useState('')
   const [maxGuests, setMaxGuests] = useState('')
   const [errors, setErrors] = useState<CreateEventErrors>({})
@@ -95,6 +101,8 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
         setTags((ev.tags || []).map((tag) => tag.slug))
         setAddressPublic(ev.addressPublic || '')
         setAddressPrivate(ev.addressPrivate || '')
+        setMeetingLink(ev.meetingLink || '')
+        setParticipantGeo(ev.participantGeo === 'city' ? 'city' : 'any')
         setStartsAt(isoToDatetimeLocal(ev.startsAt))
         setMaxGuests(ev.maxGuests != null ? String(ev.maxGuests) : '')
       })
@@ -130,6 +138,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
       title,
       description,
       theme,
+      format: event?.format ?? 'offline',
       city,
       addressPublic,
       addressPrivate,
@@ -146,13 +155,16 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
     setFormError('')
     setSubmitting(true)
     try {
+      const isOnline = event?.format === 'online'
       const payload = {
         title: title.trim(),
         description: description.trim(),
         theme,
         city: city.trim(),
-        addressPublic: addressPublic.trim(),
-        addressPrivate: addressPrivate.trim(),
+        addressPublic: isOnline ? undefined : addressPublic.trim(),
+        addressPrivate: isOnline ? undefined : addressPrivate.trim(),
+        meetingLink: isOnline ? meetingLink.trim() || null : undefined,
+        participantGeo: isOnline ? participantGeo : undefined,
         // datetime-local → UTC ISO 8601
         startsAt: new Date(startsAt).toISOString(),
         maxGuests: maxGuests === '' ? undefined : Number(maxGuests),
@@ -329,7 +341,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="city">
-              Город
+              {event.format === 'online' ? 'Город хоста' : 'Город'}
             </label>
             <CityInput
               id="city"
@@ -338,9 +350,77 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
               hasError={!!errors.city}
               placeholder="Например: Москва"
             />
+            {event.format === 'online' && (
+              <p className="mt-1 text-xs text-gray-500">
+                Влияет на показ в локальной ленте и на часовой пояс
+              </p>
+            )}
             {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city}</p>}
           </div>
 
+          {event.format === 'online' && (
+            <>
+              <div>
+                <label
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                  htmlFor="meetingLink"
+                >
+                  Ссылка на встречу <span className="text-gray-400">(необязательно)</span>
+                </label>
+                <input
+                  id="meetingLink"
+                  type="url"
+                  value={meetingLink}
+                  onChange={(e) => setMeetingLink(e.target.value)}
+                  maxLength={500}
+                  placeholder="https://discord.gg/..."
+                  className={`w-full p-2 border rounded text-gray-900 placeholder:text-gray-400 ${errors.meetingLink ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Видят только организатор и подтверждённые участники. Можно заполнить позже
+                  после публикации
+                </p>
+                {errors.meetingLink && (
+                  <p className="mt-1 text-sm text-red-600">{errors.meetingLink}</p>
+                )}
+              </div>
+
+              <div>
+                <span className="block text-sm font-medium text-gray-700 mb-1">
+                  Кто может участвовать
+                </span>
+                <div
+                  className="inline-flex rounded-lg border border-gray-300 p-0.5"
+                  role="group"
+                  aria-label="Кто может участвовать"
+                >
+                  {(
+                    [
+                      { value: 'any', label: 'Любой город' },
+                      { value: 'city', label: 'Только мой город' },
+                    ] as const
+                  ).map((option) => {
+                    const active = participantGeo === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setParticipantGeo(option.value)}
+                        className={`min-h-[40px] rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                          active ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {event.format !== 'online' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label
@@ -390,6 +470,7 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
               )}
             </div>
           </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="startsAt">
@@ -422,7 +503,12 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
             {errors.maxGuests && <p className="mt-1 text-sm text-red-600">{errors.maxGuests}</p>}
           </div>
 
-          <TagPicker value={tags} onChange={setTags} error={errors.tags} />
+          <TagPicker
+            value={tags}
+            onChange={setTags}
+            format={event.format ?? 'offline'}
+            error={errors.tags}
+          />
 
           {formError && (
             <div className="p-3 bg-red-50 text-red-700 text-sm rounded">{formError}</div>

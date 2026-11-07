@@ -8,6 +8,7 @@ const ACCESS_TOKEN_COOKIE = 'accessToken'
 // создание/редактирование событий. Регулярки покрывают и вложенные пути.
 const PRIVATE_PATTERNS = [
   /^\/profile(?:\/.*)?$/,
+  /^\/my-events(?:\/.*)?$/,
   /^\/events\/new(?:\/.*)?$/,
   /^\/events\/edit(?:\/.*)?$/,
   /^\/notifications(?:\/.*)?$/,
@@ -48,6 +49,7 @@ export const config = {
   // Публичные (/', /events, /events/[id], /test-*) сюда не попадают и не трогаются.
   matcher: [
     '/profile/:path*',
+    '/my-events/:path*',
     '/events/new/:path*',
     '/events/edit/:path*',
     '/notifications/:path*',

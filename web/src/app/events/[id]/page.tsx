@@ -8,11 +8,13 @@ import { api } from '@/lib/api'
 import {
   isEventSaved,
   recordEventView,
+  subscribeToEventHistory,
   toggleSavedEvent,
   type StoredEvent,
 } from '@/lib/eventHistory'
-import { formatEventDateTime } from '@/lib/date'
+import { formatEventDateTime, formatTimeInZone, timeZoneForCity } from '@/lib/date'
 import {
+  PLATFORM_ICONS,
   PLATFORM_OPTIONS,
   SPORT_LEVEL_OPTIONS,
   VENUE_TYPE_OPTIONS,
@@ -58,6 +60,9 @@ type EventDetail = {
   budgetNote?: string | null
   venueType?: string | null
   platform?: string | null
+  participantGeo?: 'any' | 'city' | null
+  meetingLink?: string | null
+  hasMeetingLink?: boolean
   status: string
   rules?: unknown
   lat?: number | null
@@ -193,6 +198,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT)
   const [chatInput, setChatInput] = useState('')
   const [guestChecklist, setGuestChecklist] = useState<Record<string, boolean>>({})
+  const [meetingLinkCopied, setMeetingLinkCopied] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -201,6 +207,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       window.history.replaceState(null, '', window.location.pathname)
     }
   }, [])
+
+  // Держим сердечко в актуальном состоянии: его меняют и карточки, и шапка.
+  useEffect(() => {
+    const sync = () => setSaved(isEventSaved(id))
+    sync()
+    return subscribeToEventHistory(sync)
+  }, [id])
 
   // Загружаем событие и список гостей; loading держим до завершения обоих.
   useEffect(() => {
@@ -431,6 +444,17 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     }
   }
 
+  const handleCopyMeetingLink = async () => {
+    if (!event?.meetingLink) return
+    try {
+      await navigator.clipboard.writeText(event.meetingLink)
+      setMeetingLinkCopied(true)
+      window.setTimeout(() => setMeetingLinkCopied(false), 2000)
+    } catch {
+      // Буфер обмена может быть недоступен — ссылку можно открыть кнопкой.
+    }
+  }
+
   const handleReport = () => {
     if (!user) {
       router.replace(`/login?from=/events/${id}`)
@@ -605,13 +629,17 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
   const subcategoryMeta = findSubcategory(event.subcategory)
   const formatMeta = FORMAT_BY_SLUG[event.format ?? 'offline']
+  const isOnline = event.format === 'online'
+  const hostTimeZone = isOnline ? timeZoneForCity(event.city) : null
+  const hostTime = hostTimeZone ? formatTimeInZone(event.startsAt, hostTimeZone) : ''
+  const platformLabel = optionLabel(PLATFORM_OPTIONS, event.platform) || 'Онлайн'
+  const platformIcon = PLATFORM_ICONS[event.platform ?? 'other'] ?? '🌐'
   const hasMeetingDetails = Boolean(
     event.durationMinutes ||
       event.waitlistEnabled ||
       event.plusOneEnabled ||
       (event.format === 'sport' &&
         (event.venueType || event.sportLevel || event.weatherDependent)) ||
-      (event.format === 'online' && event.platform) ||
       event.budgetType === 'split',
   )
   const occupancyPercent =
@@ -677,7 +705,12 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
               <button
                 type="button"
                 onClick={handleToggleSaved}
-                className="rounded-lg border border-gray-200 px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                aria-pressed={saved}
+                className={`rounded-lg border px-3 py-1 text-sm font-medium transition hover:bg-gray-50 ${
+                  saved
+                    ? 'border-red-200 text-red-600'
+                    : 'border-gray-200 text-gray-700'
+                }`}
               >
                 {saved ? '♥ В избранном' : '♡ Сохранить'}
               </button>
@@ -700,7 +733,15 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
               </span>
             </p>
           )}
-          <p className="text-gray-700">🕒 {formatEventDateTime(event.startsAt)}</p>
+          <p className="text-gray-700">
+            🕒 {formatEventDateTime(event.startsAt)}{' '}
+            <span className="text-xs text-gray-500">· по вашему времени</span>
+          </p>
+          {isOnline && hostTime && hostTimeZone && (
+            <p className="mt-1 text-sm text-gray-500">
+              У организатора: {hostTime} ({hostTimeZone})
+            </p>
+          )}
           {event.maxGuests != null ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <div className="h-2 w-40 overflow-hidden rounded-full bg-gray-200">
@@ -736,7 +777,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           )}
         </div>
 
-        {(event.addressPublic || event.hasPrivateAddress) && (
+        {!isOnline && (event.addressPublic || event.hasPrivateAddress) && (
           <div className="mt-6 p-6 bg-white rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-3">Адрес</h2>
             {event.addressPublic && (
@@ -773,9 +814,40 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                 )}
               </div>
             )}
-            {event.format === 'online' && (
+          </div>
+        )}
+
+        {isOnline && (
+          <div className="mt-6 p-6 bg-white rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-3">Где встречаемся</h2>
+            <p className="text-gray-700">
+              {platformIcon} {platformLabel}
+            </p>
+            {event.canViewPrivateAddress && event.meetingLink ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  href={event.meetingLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                >
+                  Открыть
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyMeetingLink}
+                  className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200"
+                >
+                  {meetingLinkCopied ? 'Скопировано' : 'Скопировать'}
+                </button>
+              </div>
+            ) : event.canViewPrivateAddress ? (
               <p className="mt-2 text-sm text-gray-500">
-                Ссылка выдаётся после одобрения.
+                Ссылка пока не добавлена — можно заполнить позже.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-gray-500">
+                Ссылка откроется после одобрения заявки.
               </p>
             )}
           </div>
@@ -803,11 +875,6 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
               {event.format === 'sport' && event.weatherDependent && (
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
                   Погодозависимо
-                </span>
-              )}
-              {event.format === 'online' && event.platform && (
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
-                  💻 {optionLabel(PLATFORM_OPTIONS, event.platform)}
                 </span>
               )}
               {event.waitlistEnabled && (

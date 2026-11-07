@@ -32,7 +32,7 @@ import {
   isEventFormat,
   type EventFormat,
 } from '@/lib/formats'
-import { useTags, type Tag } from '@/lib/tags'
+import { isTagAllowed, useTags, type Tag } from '@/lib/tags'
 import CityInput from '@/components/CityInput'
 import EventCoverField from '@/components/EventCoverField'
 import EventWizardPreview from '@/components/EventWizardPreview'
@@ -43,6 +43,7 @@ import Toggle from '@/components/Toggle'
 type WizardErrors = CreateEventErrors & {
   budgetAmount?: string
   budgetNote?: string
+  meetingLink?: string
 }
 
 const QUICK_RULES = [
@@ -55,7 +56,7 @@ const QUICK_RULES = [
 
 const STEP_ERROR_KEYS: (keyof WizardErrors)[][] = [
   ['title', 'description'],
-  ['city', 'addressPublic', 'addressPrivate'],
+  ['city', 'addressPublic', 'addressPrivate', 'meetingLink'],
   ['startsAt', 'maxGuests'],
   ['tags', 'budgetAmount', 'budgetNote'],
   [],
@@ -70,6 +71,8 @@ const FIELD_STEP: Record<string, number> = {
   addressPrivate: 1,
   venueType: 1,
   platform: 1,
+  meetingLink: 1,
+  participantGeo: 1,
   startsAt: 2,
   maxGuests: 2,
   durationMinutes: 2,
@@ -93,6 +96,7 @@ export default function NewEventPage() {
   const [form, setForm] = useState<EventDraftData>(defaultDraft)
   const [errors, setErrors] = useState<WizardErrors>({})
   const [formError, setFormError] = useState('')
+  const [formatNotice, setFormatNotice] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [draftReady, setDraftReady] = useState(false)
   const [draftSaved, setDraftSaved] = useState(false)
@@ -147,7 +151,7 @@ export default function NewEventPage() {
   // Предзаполняем город: из черновика, иначе выбранный в шапке / из профиля.
   useEffect(() => {
     if (prefilledRef.current || loading || !cityReady) return
-    const city = draftCityRef.current || selectedCity || user?.profile?.city || ''
+    const city = draftCityRef.current || user?.profile?.city || selectedCity || ''
     setForm((prev) => ({ ...prev, city }))
     prefilledRef.current = true
   }, [loading, cityReady, selectedCity, user])
@@ -218,13 +222,28 @@ export default function NewEventPage() {
   }
 
   const handleFormatChange = (nextFormat: EventFormat) => {
+    // Вайбы, не разрешённые в новом формате, снимаем. Пока справочник
+    // не загрузился, не фильтруем — иначе можно потерять все теги.
+    const tags = tagCatalog.length
+      ? form.tags.filter((slug) => {
+          const tag = tagCatalog.find((item) => item.slug === slug)
+          return !tag || isTagAllowed(tag, nextFormat)
+        })
+      : form.tags
+    const removed = form.tags.length - tags.length
+    setFormatNotice(
+      removed > 0
+        ? 'Некоторые вайбы не подходят под новый формат и были сняты.'
+        : '',
+    )
+
     markDirty()
     setForm((prev) => {
       const subcategory =
         findSubcategory(prev.subcategory)?.format.slug === nextFormat
           ? prev.subcategory
           : ''
-      return { ...prev, format: nextFormat, subcategory }
+      return { ...prev, format: nextFormat, subcategory, tags }
     })
   }
 
@@ -244,6 +263,7 @@ export default function NewEventPage() {
       title: form.title,
       description: form.description,
       theme: subcategoryMeta?.label ?? '',
+      format: form.format,
       city: form.city,
       addressPublic: form.addressPublic,
       addressPrivate: form.addressPrivate,
@@ -252,6 +272,16 @@ export default function NewEventPage() {
       tags: form.tags,
     })
     const next: WizardErrors = { ...base }
+
+    // Ссылка необязательна, но если указана — должна быть корректным URL.
+    if (form.format === 'online' && form.meetingLink.trim()) {
+      try {
+        const url = new URL(form.meetingLink.trim())
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error()
+      } catch {
+        next.meetingLink = 'Укажите корректную ссылку (http:// или https://)'
+      }
+    }
 
     if (form.budgetType === 'split') {
       const amount = Number(form.budgetAmount)
@@ -334,8 +364,14 @@ export default function NewEventPage() {
         format: form.format,
         subcategory: form.subcategory || undefined,
         city: form.city.trim(),
-        addressPublic: form.addressPublic.trim(),
-        addressPrivate: form.addressPrivate.trim(),
+        // У online-события адресов нет: сервер их игнорирует, но и не шлём.
+        addressPublic:
+          form.format === 'online' ? undefined : form.addressPublic.trim(),
+        addressPrivate:
+          form.format === 'online' ? undefined : form.addressPrivate.trim(),
+        meetingLink:
+          form.format === 'online' ? form.meetingLink.trim() || null : undefined,
+        participantGeo: form.format === 'online' ? form.participantGeo : undefined,
         startsAt: startsAt.toISOString(),
         endsAt,
         durationMinutes: form.durationMinutes,
@@ -429,9 +465,10 @@ export default function NewEventPage() {
 
   const formatMeta = FORMAT_BY_SLUG[form.format]
   const subcategoryMeta = findSubcategory(form.subcategory)
-  const addressFilled = Boolean(
-    form.city.trim() && form.addressPublic.trim() && form.addressPrivate.trim(),
-  )
+  const addressFilled =
+    form.format === 'online'
+      ? Boolean(form.city.trim())
+      : Boolean(form.city.trim() && form.addressPublic.trim() && form.addressPrivate.trim())
   const photoAdded = Boolean(coverFile)
   const rulesFilled = Boolean(form.houseRules.trim() || form.houseRulesChips.length > 0)
   const previewHost = {
@@ -492,6 +529,20 @@ export default function NewEventPage() {
           noValidate
         >
           <h2 className="text-lg font-semibold">{WIZARD_STEPS[form.step]}</h2>
+
+          {formatNotice && (
+            <div className="flex items-start justify-between gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+              <span>{formatNotice}</span>
+              <button
+                type="button"
+                onClick={() => setFormatNotice('')}
+                aria-label="Закрыть уведомление"
+                className="shrink-0 font-semibold text-amber-700 hover:text-amber-900"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {form.step === 0 && (
             <div className="space-y-5">
@@ -591,9 +642,63 @@ export default function NewEventPage() {
 
           {form.step === 1 && (
             <div className="space-y-5">
+              {form.format === 'online' && (
+                <div className="space-y-5">
+                  <div>
+                    <label
+                      className="mb-1 block text-sm font-medium text-gray-700"
+                      htmlFor="platform"
+                    >
+                      Платформа
+                    </label>
+                    <select
+                      id="platform"
+                      value={form.platform}
+                      onChange={(e) => update('platform', e.target.value)}
+                      className={inputClass(false)}
+                    >
+                      {PLATFORM_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      className="mb-1 block text-sm font-medium text-gray-700"
+                      htmlFor="meetingLink"
+                    >
+                      Ссылка на встречу <span className="text-gray-400">(необязательно)</span>
+                    </label>
+                    <input
+                      id="meetingLink"
+                      type="url"
+                      value={form.meetingLink}
+                      onChange={(e) => update('meetingLink', e.target.value)}
+                      maxLength={500}
+                      placeholder="https://discord.gg/..."
+                      className={inputClass(!!errors.meetingLink)}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Видят только организатор и подтверждённые участники. Можно заполнить
+                      позже после публикации
+                    </p>
+                    {errors.meetingLink && (
+                      <p className="mt-1 text-sm text-red-600">{errors.meetingLink}</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">
+                    Ссылка выдаётся после одобрения
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="city">
-                  Город
+                  {form.format === 'online' ? 'Город хоста' : 'Город'}
                 </label>
                 <CityInput
                   id="city"
@@ -602,10 +707,53 @@ export default function NewEventPage() {
                   hasError={!!errors.city}
                   placeholder="Например: Москва"
                 />
+                {form.format === 'online' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Влияет на показ в локальной ленте и на часовой пояс
+                  </p>
+                )}
                 {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city}</p>}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              {form.format === 'online' && (
+                <div>
+                  <span className="mb-1 block text-sm font-medium text-gray-700">
+                    Кто может участвовать
+                  </span>
+                  <div
+                    className="inline-flex rounded-lg border border-gray-300 p-0.5"
+                    role="group"
+                    aria-label="Кто может участвовать"
+                  >
+                    {(
+                      [
+                        { value: 'any', label: 'Любой город' },
+                        { value: 'city', label: 'Только мой город' },
+                      ] as const
+                    ).map((option) => {
+                      const active = form.participantGeo === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => update('participantGeo', option.value)}
+                          className={`min-h-[40px] rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                            active
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {form.format !== 'online' && (
+                <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
                     className="mb-1 block text-sm font-medium text-gray-700"
@@ -653,7 +801,8 @@ export default function NewEventPage() {
                     <p className="mt-1 text-sm text-red-600">{errors.addressPrivate}</p>
                   )}
                 </div>
-              </div>
+                </div>
+              )}
 
               {form.format === 'sport' && (
                 <div>
@@ -678,33 +827,6 @@ export default function NewEventPage() {
                 </div>
               )}
 
-              {form.format === 'online' && (
-                <div className="space-y-2">
-                  <div>
-                    <label
-                      className="mb-1 block text-sm font-medium text-gray-700"
-                      htmlFor="platform"
-                    >
-                      Платформа
-                    </label>
-                    <select
-                      id="platform"
-                      value={form.platform}
-                      onChange={(e) => update('platform', e.target.value)}
-                      className={inputClass(false)}
-                    >
-                      {PLATFORM_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">
-                    Ссылка выдаётся после одобрения
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -802,7 +924,7 @@ export default function NewEventPage() {
                   className="mb-1 block text-sm font-medium text-gray-700"
                   htmlFor="houseRules"
                 >
-                  Правила дома <span className="text-gray-400">(необязательно)</span>
+                  Правила <span className="text-gray-400">(необязательно)</span>
                 </label>
                 <textarea
                   id="houseRules"
@@ -864,6 +986,7 @@ export default function NewEventPage() {
               <TagPicker
                 value={form.tags}
                 onChange={(tags) => update('tags', tags)}
+                format={form.format}
                 error={errors.tags}
               />
 
@@ -990,7 +1113,8 @@ export default function NewEventPage() {
                 <h3 className="text-sm font-semibold text-gray-700">Чек-лист</h3>
                 <ul className="mt-2 space-y-1 text-sm">
                   <li className={addressFilled ? 'text-green-600' : 'text-gray-500'}>
-                    {addressFilled ? '✓' : '—'} Адрес указан
+                    {addressFilled ? '✓' : '—'}{' '}
+                    {form.format === 'online' ? 'Город хоста указан' : 'Адрес указан'}
                   </li>
                   <li className={photoAdded ? 'text-green-600' : 'text-gray-500'}>
                     {photoAdded ? '✓' : '—'} Фото добавлено

@@ -1,8 +1,12 @@
 import { PrismaClient, GuestStatus, EventStatus } from '@prisma/client'
 import { AppError } from '../../common/errors'
+import { ChatService } from '../chats/service'
 
 export class RsvpService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(
+    private prisma: PrismaClient,
+    private chatService: ChatService,
+  ) {}
 
   // POST /events/:id/rsvp — записаться в гости
   async join(userId: string, eventId: string, answer?: string) {
@@ -90,6 +94,9 @@ export class RsvpService {
         hostId: true,
         maxGuests: true,
         title: true,
+        coverImageUrl: true,
+        startsAt: true,
+        endsAt: true,
         host: { select: { profile: { select: { nickname: true } } } },
       },
     })
@@ -158,6 +165,21 @@ export class RsvpService {
       ),
     )
 
+    // Подтверждённый гость автоматически попадает в чат события.
+    if (decision === 'approved') {
+      await this.chatService.ensureForEvent(
+        {
+          id: eventId,
+          hostId: event.hostId,
+          title: event.title,
+          coverImageUrl: event.coverImageUrl,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+        },
+        [guestUserId],
+      )
+    }
+
     // Гость получает системное уведомление о решении по заявке.
     await this.prisma.notification.create({
       data: {
@@ -184,6 +206,8 @@ export class RsvpService {
       throw new AppError('You are not a guest of this event', 404, 'NOT_A_GUEST')
     }
     await this.prisma.eventGuest.delete({ where: { id: existing.id } })
+    // Отменивший запись гость теряет доступ к чату события.
+    await this.chatService.removeMember(eventId, userId)
     return { success: true }
   }
 

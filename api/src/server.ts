@@ -36,6 +36,9 @@ import { tagRoutes } from './modules/tags/routes'
 import { NotificationService } from './modules/notifications/service'
 import { NotificationHandler } from './modules/notifications/handler'
 import { notificationRoutes } from './modules/notifications/routes'
+import { ChatService } from './modules/chats/service'
+import { ChatHandler } from './modules/chats/handler'
+import { chatRoutes } from './modules/chats/routes'
 import { AuthService } from './modules/auth/service'
 import { AuthHandler } from './modules/auth/handler'
 import { authRoutes } from './modules/auth/routes'
@@ -269,7 +272,8 @@ const start = async () => {
     )
 
     // ─── RSVP-роуты ──────────────────────────────────────────────
-    const rsvpService = new RsvpService(prisma)
+    const chatService = new ChatService(prisma)
+    const rsvpService = new RsvpService(prisma, chatService)
     const rsvpHandler = new RsvpHandler(rsvpService)
     rsvpRoutes(server, rsvpHandler)
 
@@ -297,6 +301,10 @@ const start = async () => {
     const notificationService = new NotificationService(prisma)
     const notificationHandler = new NotificationHandler(notificationService)
     notificationRoutes(server, notificationHandler)
+
+    // ─── Чаты событий ─────────────────────────────────────────
+    const chatHandler = new ChatHandler(chatService)
+    chatRoutes(server, chatHandler)
 
     // ─── Подсказки городов ────────────────────────────────────
     const citiesService = new CitiesService(prisma)

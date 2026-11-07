@@ -32,9 +32,18 @@ export const VENUE_TYPE_OPTIONS = [
 export const PLATFORM_OPTIONS = [
   { value: 'discord', label: 'Discord' },
   { value: 'zoom', label: 'Zoom' },
+  { value: 'meet', label: 'Meet' },
   { value: 'steam', label: 'Steam' },
   { value: 'other', label: 'Другое' },
 ]
+
+export const PLATFORM_ICONS: Record<string, string> = {
+  discord: '🎧',
+  zoom: '🎥',
+  meet: '📹',
+  steam: '🎮',
+  other: '🌐',
+}
 
 export function optionLabel(
   options: readonly { value: string; label: string }[],

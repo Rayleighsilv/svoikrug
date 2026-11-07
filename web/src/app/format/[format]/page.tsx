@@ -6,19 +6,19 @@ import { useCity } from '@/contexts/CityContext'
 import { api } from '@/lib/api'
 import {
   FORMAT_BY_SLUG,
-  POPULAR_LINKS,
   countForCity,
   findSubcategory,
   isEventFormat,
-  type PopularItem,
 } from '@/lib/formats'
 import { meetingsWord } from '@/lib/reviews'
+import { isTagAllowed, useTags } from '@/lib/tags'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
 import CategoryTile from '@/components/CategoryTile'
 import EventCard, { type EventCardEvent } from '@/components/EventCard'
 import EventListSkeleton from '@/components/EventListSkeleton'
 import Header from '@/components/Header'
 import OfflineFeed from '@/components/OfflineFeed'
+import VibeFilter from '@/components/VibeFilter'
 
 type EventItem = EventCardEvent
 
@@ -32,20 +32,23 @@ export default function FormatPage({ params }: { params: { format: string } }) {
   const formatSlug = formatMeta?.slug
   const { city, ready: cityReady } = useCity()
   const online = useOnlineStatus()
+  const { tags: tagCatalog } = useTags()
 
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [subcategory, setSubcategory] = useState('')
-  const [district, setDistrict] = useState('')
-  const [popularSearch, setPopularSearch] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [localOnly, setLocalOnly] = useState(false)
 
   // При смене формата сбрасываем фильтры предыдущего экрана.
+  // Географию читаем из URL: состояние чипа живёт в ?local=1.
   useEffect(() => {
     setSubcategory('')
-    setDistrict('')
-    setPopularSearch('')
+    setTags([])
+    const params = new URLSearchParams(window.location.search)
+    setLocalOnly(params.get('local') === '1')
   }, [params.format])
 
   useEffect(() => {
@@ -68,9 +71,9 @@ export default function FormatPage({ params }: { params: { format: string } }) {
       format: formatSlug,
     })
     if (city) query.set('city', city)
+    if (formatSlug === 'online' && localOnly) query.set('local', '1')
     if (subcategory) query.set('subcategory', subcategory)
-    if (district) query.set('district', district)
-    if (popularSearch) query.set('search', popularSearch)
+    for (const tag of tags) query.append('tag', tag)
 
     api
       .get<{ success: boolean; events: EventItem[] }>(`/events?${query.toString()}`)
@@ -88,24 +91,24 @@ export default function FormatPage({ params }: { params: { format: string } }) {
     return () => {
       cancelled = true
     }
-  }, [formatSlug, city, cityReady, online, subcategory, district, popularSearch, reloadKey])
+  }, [formatSlug, city, cityReady, online, subcategory, tags, localOnly, reloadKey])
 
-  const applyPopular = (item: PopularItem) => {
-    setSubcategory(item.subcategory ?? '')
-    setDistrict(item.district ?? '')
-    setPopularSearch(item.search ?? '')
+  const toggleLocalOnly = () => {
+    const next = !localOnly
+    setLocalOnly(next)
+    const url = new URL(window.location.href)
+    if (next) url.searchParams.set('local', '1')
+    else url.searchParams.delete('local')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`)
   }
 
   const selectSubcategory = (slug: string) => {
-    setDistrict('')
-    setPopularSearch('')
     setSubcategory((current) => (current === slug ? '' : slug))
   }
 
   const resetFilters = () => {
     setSubcategory('')
-    setDistrict('')
-    setPopularSearch('')
+    setTags([])
   }
 
   if (!formatMeta) {
@@ -136,13 +139,15 @@ export default function FormatPage({ params }: { params: { format: string } }) {
   )
 
   const activeSubcategory = findSubcategory(subcategory)
-  const hasFilter = Boolean(subcategory || district || popularSearch)
+  const hasFilter = Boolean(subcategory || tags.length)
+  // В фильтре показываем только вайбы, разрешённые в текущем формате.
+  const formatTags = tagCatalog.filter((item) => isTagAllowed(item, formatMeta.slug))
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
       <Header />
 
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <Link
           href="/"
           className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
@@ -157,12 +162,26 @@ export default function FormatPage({ params }: { params: { format: string } }) {
           <p className="mt-1 text-sm text-gray-500">
             {formatWeeklyCount} {meetingsWord(formatWeeklyCount)} на неделе
           </p>
+          {formatMeta.slug === 'online' && (
+            <button
+              type="button"
+              onClick={toggleLocalOnly}
+              aria-pressed={localOnly}
+              className={`mt-3 inline-flex min-h-[36px] items-center rounded-full border px-3 py-1 text-sm font-medium transition ${
+                localOnly
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+              }`}
+            >
+              {localOnly ? '✓ ' : ''}Только мой город
+            </button>
+          )}
         </div>
 
         {/* Подкатегории формата */}
         <section
           aria-label="Подкатегории формата"
-          className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
         >
           {formatMeta.subcategories.map((sub) => (
             <CategoryTile
@@ -189,89 +208,14 @@ export default function FormatPage({ params }: { params: { format: string } }) {
           />
         </section>
 
-        {/* Активный чип-фильтр */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={resetFilters}
-            aria-pressed={!hasFilter}
-            className={`rounded-full border px-3 py-1 text-sm transition ${
-              !hasFilter
-                ? 'border-blue-600 bg-blue-600 text-white'
-                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-            }`}
-          >
-            Все
-          </button>
-          {formatMeta.subcategories.map((sub) => {
-            const active = subcategory === sub.slug
-            return (
-              <button
-                key={sub.slug}
-                type="button"
-                onClick={() => selectSubcategory(sub.slug)}
-                aria-pressed={active}
-                className={`rounded-full border px-3 py-1 text-sm transition ${
-                  active
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                }`}
-              >
-                {sub.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Популярно на неделе */}
-        <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:ring-slate-700">
-          <h2 className="mb-3 text-lg font-semibold">Популярно на неделе</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {POPULAR_LINKS[formatMeta.slug].map((column) => (
-              <div key={column.title}>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  {column.title}
-                </h3>
-                <ul className="space-y-1.5">
-                  {column.items.map((item) => (
-                    <li key={item.label}>
-                      <button
-                        type="button"
-                        onClick={() => applyPopular(item)}
-                        className="flex w-full items-baseline justify-between gap-2 text-left text-sm text-gray-700 transition hover:text-blue-600"
-                      >
-                        <span className="truncate">{item.label}</span>
-                        <span className="shrink-0 text-xs text-gray-400">{item.count}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {(district || popularSearch) && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-gray-500">Фильтр:</span>
-            {district && (
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
-                {district}
-              </span>
-            )}
-            {popularSearch && (
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
-                «{popularSearch}»
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="text-blue-600 hover:underline"
-            >
-              Сбросить
-            </button>
-          </div>
+        {/* Слева — вайб-фильтр, справа — список встреч */}
+        <div
+          className={`grid items-start gap-6 ${
+            formatTags.length > 0 ? 'lg:grid-cols-[280px_minmax(0,1fr)]' : ''
+          }`}
+        >
+        {formatTags.length > 0 && (
+          <VibeFilter tags={formatTags} value={tags} onChange={setTags} />
         )}
 
         <section aria-labelledby="format-events-title">
@@ -323,6 +267,7 @@ export default function FormatPage({ params }: { params: { format: string } }) {
           </ul>
         )}
         </section>
+        </div>
       </div>
     </main>
   )
