@@ -9,9 +9,10 @@ export const userIdParamSchema = z.object({
   id: z.string().uuid('Invalid user ID format'),
 })
 
-// Тело POST /events/:id/ratings
+// Тело POST /events/:id/ratings: оценка + ровно один тег на участника.
 export const createRatingSchema = z.object({
   ratedUserId: z.string().uuid('Invalid rated user ID'),
   score: z.number().int().min(1, 'Score must be between 1 and 5').max(5),
+  tagSlug: z.string().min(1, 'Tag is required'),
   comment: z.string().max(1000).optional(),
 })

@@ -42,6 +42,17 @@ function formatMessageTime(iso: string): string {
   })
 }
 
+// Набор смайликов для панели ввода — без внешних зависимостей.
+const EMOJIS = [
+  '😀', '😄', '😁', '😂', '🤣', '😊', '🙂', '😉',
+  '😍', '😘', '😎', '🤔', '😅', '😢', '😭', '😡',
+  '🥳', '🤗', '🤝', '🙌', '👏', '👍', '👎', '👋',
+  '❤️', '🔥', '✨', '🎉', '🎸', '🎵', '🥂', '🍻',
+  '🍕', '☕', '🌟', '💬', '✅', '💯', '🚀', '🌙',
+]
+
+const MAX_MESSAGE_LENGTH = 2000
+
 export default function ChatPage({ params }: { params: { id: string } }) {
   const id = params.id
   const router = useRouter()
@@ -54,9 +65,49 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [emojiOpen, setEmojiOpen] = useState(false)
 
   const listRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const emojiRef = useRef<HTMLDivElement>(null)
+
+  // Закрываем панель смайликов по клику вне её и по Escape.
+  useEffect(() => {
+    if (!emojiOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (emojiRef.current && !emojiRef.current.contains(event.target as Node)) {
+        setEmojiOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEmojiOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [emojiOpen])
+
+  // Вставляем смайлик в позицию курсора и возвращаем фокус в поле.
+  const insertEmoji = (emoji: string) => {
+    const input = inputRef.current
+    const start = input?.selectionStart ?? text.length
+    const end = input?.selectionEnd ?? text.length
+    const next = text.slice(0, start) + emoji + text.slice(end)
+    if (next.length > MAX_MESSAGE_LENGTH) return
+
+    setText(next)
+    requestAnimationFrame(() => {
+      input?.focus()
+      const position = start + emoji.length
+      input?.setSelectionRange(position, position)
+    })
+  }
 
   const load = useCallback(
     async (silent = false) => {
@@ -256,10 +307,47 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               onSubmit={handleSend}
               className="flex items-end gap-2 border-t border-gray-100 px-3 py-3"
             >
+              <div className="relative shrink-0" ref={emojiRef}>
+                <button
+                  type="button"
+                  onClick={() => setEmojiOpen((open) => !open)}
+                  aria-label="Смайлики"
+                  aria-haspopup="dialog"
+                  aria-expanded={emojiOpen}
+                  title="Смайлики"
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-lg leading-none transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    emojiOpen ? 'bg-gray-100' : ''
+                  }`}
+                >
+                  <span aria-hidden="true">🙂</span>
+                </button>
+                {emojiOpen && (
+                  <div
+                    role="dialog"
+                    aria-label="Смайлики"
+                    className="absolute bottom-full left-0 z-20 mb-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-2 shadow-lg"
+                  >
+                    <div className="grid grid-cols-8 gap-0.5">
+                      {EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => insertEmoji(emoji)}
+                          aria-label={`Смайлик ${emoji}`}
+                          className="rounded-lg p-1 text-lg leading-none transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <input
+                ref={inputRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                maxLength={2000}
+                maxLength={MAX_MESSAGE_LENGTH}
                 placeholder="Написать сообщение..."
                 aria-label="Написать сообщение"
                 className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"

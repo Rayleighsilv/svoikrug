@@ -228,16 +228,38 @@ model Rating {
   ratedId   String   @map("rated_id")
   score     Int      @map("score") // 1-5
   comment   String?  @map("comment")
-createdAt DateTime @default(now()) @map("created_at")
+  // Слаг тега из справочника ratings/tags.ts. Null — старые оценки до тегов.
+  tagSlug   String?  @map("tag_slug")
+  createdAt DateTime @default(now()) @map("created_at")
 
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   rater     User     @relation("Rater", fields: [raterId], references: [id], onDelete: Cascade)
   rated     User     @relation("Rated", fields: [ratedId], references: [id], onDelete: Cascade)
+  moderationSignal ModerationSignal?
 
   @@map("ratings")
   @@index([eventId])
   @@index([ratedId, createdAt])
+  @@index([ratedId, tagSlug, createdAt])
   @@index([raterId, eventId], name: "idx_rating_unique")
+}
+
+// Очередь модерации: одиночный красный тег не публикуется, но сохраняется
+// для ручной проверки. При консенсусе (2+ автора) сигнал помечается consensus.
+model ModerationSignal {
+  id        String   @id @default(uuid()) @map("id")
+  ratingId  String   @unique @map("rating_id")
+  ratedId   String   @map("rated_id")
+  raterId   String   @map("rater_id")
+  tagSlug   String   @map("tag_slug")
+  status    String   @default("pending") @map("status")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([ratedId, tagSlug])
+  @@map("moderation_signals")
 }
 
 model RefreshToken {

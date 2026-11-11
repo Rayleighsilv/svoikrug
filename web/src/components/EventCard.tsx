@@ -1,13 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import EventImage from '@/components/EventImage'
 import FavoriteButton from '@/components/FavoriteButton'
+import ReviewsModal from '@/components/ReviewsModal'
+import UserTagChip from '@/components/UserTagChip'
 import { formatEventDateTime } from '@/lib/date'
 import { FORMAT_BY_SLUG, findSubcategory, type EventFormat } from '@/lib/formats'
 import { reviewsWord } from '@/lib/reviews'
 import type { Tag } from '@/lib/tags'
+import type { PublicUserTag } from '@/lib/userTags'
 
 export type EventCardEvent = {
   id: string
@@ -26,6 +30,7 @@ export type EventCardEvent = {
     id: string
     profile?: { nickname: string; avatarUrl?: string | null; trustScore: number } | null
     _count?: { ratingsReceived: number }
+    tags?: PublicUserTag[]
   }
   _count: { guests: number }
 }
@@ -37,6 +42,7 @@ export default function EventCard({
   event: EventCardEvent
   href?: string | null
 }) {
+  const [reviewsOpen, setReviewsOpen] = useState(false)
   const subcategory = findSubcategory(event.subcategory)
   const formatMeta = FORMAT_BY_SLUG[event.format ?? 'offline']
   const themeLabel = subcategory?.label ?? event.theme
@@ -126,7 +132,12 @@ export default function EventCard({
           </Link>
           <div className="mt-1 text-sm">
             {reviews > 0 ? (
-              <span className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setReviewsOpen(true)}
+                aria-label={`Отзывы о ${event.host.profile?.nickname || 'хосте'}`}
+                className="relative z-10 flex flex-wrap items-center gap-1 text-left hover:underline"
+              >
                 <span className="text-amber-500" aria-hidden="true">
                   ★
                 </span>
@@ -134,11 +145,18 @@ export default function EventCard({
                 <span className="text-gray-500">
                   · {reviews} {reviewsWord(reviews)}
                 </span>
-              </span>
+              </button>
             ) : (
               <span className="text-gray-400">Нет отзывов</span>
             )}
           </div>
+          {event.host.tags && event.host.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {event.host.tags.map((tag) => (
+                <UserTagChip key={tag.slug} tag={tag} compact />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -162,6 +180,14 @@ export default function EventCard({
           href={href ?? `/events/${event.id}`}
           aria-label={`Открыть событие «${event.title}»`}
           className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        />
+      )}
+
+      {reviewsOpen && (
+        <ReviewsModal
+          userId={event.host.id}
+          nickname={event.host.profile?.nickname ?? null}
+          onClose={() => setReviewsOpen(false)}
         />
       )}
     </li>

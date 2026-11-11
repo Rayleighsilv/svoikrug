@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, EventStatus, GuestStatus } from '@prisma/client'
 import { AppError } from '../../common/errors'
 import { calculateAge } from '../../common/age'
 
@@ -11,6 +11,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true,
+        createdAt: true,
         profile: {
           select: {
             nickname: true,
@@ -28,9 +29,22 @@ export class UsersService {
     if (!user) {
       throw new AppError('User not found', 404, 'USER_NOT_FOUND')
     }
+    // Статистика публичного профиля: проведённые (закрытые) и посещённые сборы.
+    const [hostedCount, attendedCount] = await Promise.all([
+      this.prisma.event.count({
+        where: { hostId: userId, status: { in: ['closed', 'archived'] as EventStatus[] } },
+      }),
+      this.prisma.eventGuest.count({
+        where: { userId, status: 'attended' as GuestStatus },
+      }),
+    ])
+
     const p = user.profile
     return {
       id: user.id,
+      createdAt: user.createdAt,
+      hostedCount,
+      attendedCount,
       nickname: p?.nickname ?? null,
       bio: p?.bio ?? null,
       avatarUrl: p?.avatarUrl ?? null,

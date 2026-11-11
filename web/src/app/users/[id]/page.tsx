@@ -7,10 +7,16 @@ import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import Avatar from '@/components/Avatar'
 import Header from '@/components/Header'
+import ReviewsModal, { StarRow } from '@/components/ReviewsModal'
+import UserTagsSection from '@/components/UserTagsSection'
 import { formatAge } from '@/lib/age'
+import { reviewsWord } from '@/lib/reviews'
 
 type Profile = {
   id: string
+  createdAt: string
+  hostedCount: number
+  attendedCount: number
   nickname: string | null
   bio?: string | null
   avatarUrl?: string | null
@@ -28,13 +34,12 @@ type PublicUser = {
   trustScore: number
 }
 
-type RatingItem = {
-  id: string
-  score: number
-  comment?: string | null
-  createdAt: string
-  event: { title: string }
-  rater: { nickname: string | null }
+function formatRegistrationDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date
+    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    .replace(/ г\.$/, '')
 }
 
 const FOLLOW_ERRORS: Record<string, string> = {
@@ -60,7 +65,7 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
     averageScore: 0,
     totalCount: 0,
   })
-  const [ratings, setRatings] = useState<RatingItem[]>([])
+  const [reviewsOpen, setReviewsOpen] = useState(false)
 
   const isOwnProfile = !!(user && user.id === id)
 
@@ -88,19 +93,13 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
     }
   }, [id])
 
-  // Сводка и список рейтингов пользователя.
+  // Сводка рейтинга для карточки профиля (список отзывов грузит модалка).
   useEffect(() => {
     let cancelled = false
     api
       .get<{ success: boolean; averageScore: number; totalCount: number }>(`/users/${id}/rating-summary`)
       .then((d) => {
         if (!cancelled) setRatingSummary({ averageScore: d.averageScore, totalCount: d.totalCount })
-      })
-      .catch(() => {})
-    api
-      .get<{ success: boolean; ratings: RatingItem[] }>(`/users/${id}/ratings`)
-      .then((d) => {
-        if (!cancelled) setRatings(d.ratings || [])
       })
       .catch(() => {})
     return () => {
@@ -213,11 +212,11 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                 </span>
               </p>
             )}
-            <p className="text-sm text-gray-500 mt-1">Trust Score: {profile.trustScore}</p>
+            <p className="text-sm text-gray-500 mt-1">На сайте с {formatRegistrationDate(profile.createdAt)}</p>
             <p className="text-sm text-gray-500 mt-1">{profile.isVerified ? 'Верифицирован' : 'Не верифицирован'}</p>
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 flex flex-col items-end gap-2">
             {isOwnProfile ? (
               <Link
                 href="/profile"
@@ -238,7 +237,7 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                 <button
                   onClick={handleFollow}
                   disabled={followSubmitting}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
+                  className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
                 >
                   {followSubmitting ? 'Подписываемся...' : 'Подписаться'}
                 </button>
@@ -246,11 +245,28 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
             ) : (
               <button
                 onClick={() => router.replace(`/login?from=/users/${id}`)}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700"
               >
                 Подписаться
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => setReviewsOpen(true)}
+              title="Показать отзывы"
+              className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
+            >
+              <StarRow score={Math.round(ratingSummary.averageScore)} className="text-sm" />
+              <span>
+                <strong>
+                  {ratingSummary.totalCount > 0
+                    ? ratingSummary.averageScore.toFixed(1).replace('.', ',')
+                    : '—'}
+                </strong>{' '}
+                · {ratingSummary.totalCount} {reviewsWord(ratingSummary.totalCount)}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -258,32 +274,22 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
           <div className="mt-4 p-3 bg-red-50 text-red-700 text-sm rounded">{followError}</div>
         )}
 
-        <div className="mt-6 flex gap-10">
+        <div className="mt-6 flex flex-wrap gap-x-10 gap-y-2">
           <p className="text-gray-700">
             <strong className="text-lg">{followers.length}</strong> подписчиков
           </p>
           <p className="text-gray-700">
             <strong className="text-lg">{following.length}</strong> подписок
           </p>
+          <p className="text-gray-700">
+            <strong className="text-lg">{profile.attendedCount}</strong> посещённых сборов
+          </p>
+          <p className="text-gray-700">
+            <strong className="text-lg">{profile.hostedCount}</strong> проведённых сборов
+          </p>
         </div>
 
-        <div className="mt-6 p-6 bg-white rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-3">Рейтинг</h2>
-          <p className="text-gray-700">
-            Средний балл: <strong>{ratingSummary.averageScore}</strong> из 5 ·{' '}
-            {ratingSummary.totalCount} оценок
-          </p>
-          {ratings.length > 0 && (
-            <ul className="mt-3 space-y-2">
-              {ratings.map((r) => (
-                <li key={r.id} className="text-sm text-gray-600">
-                  <strong>{r.rater.nickname || 'Без имени'}</strong> · оценка {r.score}/5 · {r.event.title}
-                  {r.comment ? ` — ${r.comment}` : ''}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <UserTagsSection userId={id} isOwn={isOwnProfile} />
 
         <div className="mt-8">
           <h2 className="text-lg font-semibold mb-3">Подписчики</h2>
@@ -321,6 +327,14 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
           )}
         </div>
       </div>
+
+      {reviewsOpen && (
+        <ReviewsModal
+          userId={profile.id}
+          nickname={profile.nickname}
+          onClose={() => setReviewsOpen(false)}
+        />
+      )}
     </main>
   )
 }

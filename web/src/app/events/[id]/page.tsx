@@ -12,7 +12,12 @@ import {
   toggleSavedEvent,
   type StoredEvent,
 } from '@/lib/eventHistory'
-import { formatEventDateTime, formatTimeInZone, timeZoneForCity } from '@/lib/date'
+import {
+  formatDateTime,
+  formatEventDateTime,
+  formatTimeInZone,
+  timeZoneForCity,
+} from '@/lib/date'
 import {
   PLATFORM_ICONS,
   PLATFORM_OPTIONS,
@@ -23,7 +28,14 @@ import {
 } from '@/lib/eventLabels'
 import { FORMAT_BY_SLUG, findSubcategory, type EventFormat } from '@/lib/formats'
 import { reviewsWord } from '@/lib/reviews'
+import {
+  USER_TAG_COLOR_LABELS,
+  userTagsForAudience,
+  type PublicUserTag,
+  type UserTagColor,
+} from '@/lib/userTags'
 import Avatar from '@/components/Avatar'
+import UserTagChip from '@/components/UserTagChip'
 import EventImage from '@/components/EventImage'
 import Header from '@/components/Header'
 import RsvpQuestionModal from '@/components/RsvpQuestionModal'
@@ -79,7 +91,9 @@ type EventDetail = {
       isVerified: boolean
     } | null
     _count?: { ratingsReceived: number }
+    tags?: PublicUserTag[]
   }
+  reviewWindow?: { opensAt: string; closesAt: string; isOpen: boolean }
   _count: { guests: number }
 }
 
@@ -110,6 +124,14 @@ type GuestItem = {
       trustScore?: number
     } | null
   }
+}
+
+type RateTarget = {
+  key: string
+  userId: string
+  nickname: string
+  avatarUrl?: string | null
+  isHost: boolean
 }
 
 type ChatMessage = {
@@ -183,6 +205,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [reviewingGuestId, setReviewingGuestId] = useState<string | null>(null)
   const [guestReviewError, setGuestReviewError] = useState('')
   const [scores, setScores] = useState<Record<string, number>>({})
+  const [selectedTags, setSelectedTags] = useState<Record<string, string>>({})
   const [comments, setComments] = useState<Record<string, string>>({})
   const [ratedUsers, setRatedUsers] = useState<Set<string>>(new Set())
   const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null)
@@ -293,7 +316,31 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
   const myGuest = user ? guests.find((g) => g.userId === user.id) : null
   const iAttended = myGuest?.status === 'attended'
-  const rateable = guests.filter((g) => g.status === 'attended' && g.userId !== user?.id)
+
+  // Оценить можно хоста и посетивших гостей; для хоста — отдельный набор тегов.
+  const rateTargets: RateTarget[] = []
+  if (event && iAttended) {
+    if (event.host.id !== user?.id) {
+      rateTargets.push({
+        key: 'host',
+        userId: event.host.id,
+        nickname: event.host.profile?.nickname || 'Организатор',
+        avatarUrl: event.host.profile?.avatarUrl,
+        isHost: true,
+      })
+    }
+    for (const guest of guests) {
+      if (guest.status === 'attended' && guest.userId !== user?.id) {
+        rateTargets.push({
+          key: guest.id,
+          userId: guest.userId,
+          nickname: guest.user.profile?.nickname || 'Без имени',
+          avatarUrl: guest.user.profile?.avatarUrl,
+          isHost: false,
+        })
+      }
+    }
+  }
   const isApprovedGuest =
     !isHost &&
     !!myGuest &&
@@ -524,8 +571,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const handleRate = async (userId: string) => {
     if (!event) return
     const score = scores[userId]
+    const tagSlug = selectedTags[userId]
     if (!score) {
       setRatingError('Выберите оценку')
+      return
+    }
+    if (!tagSlug) {
+      setRatingError('Выберите тег')
       return
     }
     setRatingSubmitting(userId)
@@ -534,6 +586,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
       await api.post(`/events/${event.id}/ratings`, {
         ratedUserId: userId,
         score,
+        tagSlug,
         comment: comments[userId]?.trim() || undefined,
       })
       setRatedUsers((prev) => new Set(prev).add(userId))
@@ -544,6 +597,10 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         NOT_A_GUEST: 'Этот участник не был гостем, или вы не были гостем события.',
         ALREADY_RATED: 'Вы уже оценили этого участника.',
         EVENT_NOT_CLOSED: 'Событие ещё не закрыто для оценок.',
+        REVIEW_WINDOW_NOT_OPEN: 'Окно оценок ещё не открылось — оно стартует через 10 часов после встречи.',
+        REVIEW_WINDOW_CLOSED: 'Окно оценок закрыто — отзывы принимаются 72 часа после встречи.',
+        UNKNOWN_TAG: 'Неизвестный тег.',
+        TAG_NOT_ALLOWED: 'Этот тег нельзя выбрать для этого участника.',
       }
       if (e.code === 'ALREADY_RATED') {
         setRatedUsers((prev) => new Set(prev).add(userId))
@@ -931,6 +988,13 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                   <span className="text-gray-400">Нет отзывов</span>
                 )}
               </div>
+              {event.host.tags && event.host.tags.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {event.host.tags.map((tag) => (
+                    <UserTagChip key={tag.slug} tag={tag} compact />
+                  ))}
+                </div>
+              )}
               {!isHost && (
                 <button
                   type="button"
@@ -1086,36 +1150,56 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
 
         {(event.status === 'closed' || event.status === 'archived') && iAttended && (
           <div className="mt-6 p-6 bg-white rounded-lg shadow">
-            <h2 className="text-lg font-semibold mb-3">Оценить участников</h2>
+            <h2 className="text-lg font-semibold mb-1">Оценить участников</h2>
+            <p className="mb-3 text-xs text-gray-500">
+              Отзыв анонимный: участник не увидит, кто его оставил. Нужны оценка и один тег.
+            </p>
             {ratingError && (
               <div className="mb-3 p-3 bg-red-50 text-red-700 text-sm rounded">{ratingError}</div>
             )}
-            {rateable.length === 0 ? (
+            {event.reviewWindow && !event.reviewWindow.isOpen ? (
+              <p className="text-gray-600">
+                {Date.now() < new Date(event.reviewWindow.opensAt).getTime()
+                  ? `Оценки откроются ${formatDateTime(event.reviewWindow.opensAt)} — через 10 часов после встречи.`
+                  : `Окно оценок закрылось ${formatDateTime(event.reviewWindow.closesAt)} — отзывы принимаются 72 часа после встречи.`}
+              </p>
+            ) : rateTargets.length === 0 ? (
               <p className="text-gray-600">Нет участников для оценки</p>
-            ) : rateable.every((g) => ratedUsers.has(g.userId)) ? (
+            ) : rateTargets.every((target) => ratedUsers.has(target.userId)) ? (
               <p className="text-gray-600">Вы оценили всех участников</p>
             ) : (
               <ul className="space-y-4">
-                {rateable.map((g) => {
-                  const nickname = g.user.profile?.nickname || 'Без имени'
-                  const isRated = ratedUsers.has(g.userId)
-                  const isSubmitting = ratingSubmitting === g.userId
+                {rateTargets.map((target) => {
+                  const isRated = ratedUsers.has(target.userId)
+                  const isSubmitting = ratingSubmitting === target.userId
+                  const audience = target.isHost ? 'host' : 'guest'
                   return (
-                    <li key={g.id}>
-                      <div className="flex items-center gap-3">
-                        <Link href={`/users/${g.userId}`} className="flex items-center gap-3 text-blue-600 hover:underline">
-                          <Avatar url={g.user.profile?.avatarUrl} name={nickname} size="w-9 h-9" />
-                          <span className="font-medium">{nickname}</span>
+                    <li key={target.key}>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Link
+                          href={`/users/${target.userId}`}
+                          className="flex items-center gap-3 text-blue-600 hover:underline"
+                        >
+                          <Avatar url={target.avatarUrl} name={target.nickname} size="w-9 h-9" />
+                          <span className="font-medium">{target.nickname}</span>
                         </Link>
+                        {target.isHost && (
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            Организатор
+                          </span>
+                        )}
                         {isRated ? (
                           <span className="text-sm text-green-600 font-medium">Оценён</span>
                         ) : (
-                          <div className="flex items-center gap-2 flex-1">
+                          <div className="flex flex-1 flex-wrap items-center gap-2">
                             <select
-                              value={scores[g.userId] || 0}
-                              onChange={(e) => setScores((prev) => ({ ...prev, [g.userId]: Number(e.target.value) }))}
+                              value={scores[target.userId] || 0}
+                              onChange={(e) =>
+                                setScores((prev) => ({ ...prev, [target.userId]: Number(e.target.value) }))
+                              }
                               className="p-1 border rounded text-sm"
                               disabled={isSubmitting}
+                              aria-label={`Оценка для ${target.nickname}`}
                             >
                               <option value={0} disabled>
                                 Оценка
@@ -1126,17 +1210,51 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                                 </option>
                               ))}
                             </select>
+                            <select
+                              value={selectedTags[target.userId] || ''}
+                              onChange={(e) =>
+                                setSelectedTags((prev) => ({ ...prev, [target.userId]: e.target.value }))
+                              }
+                              className="p-1 border rounded text-sm"
+                              disabled={isSubmitting}
+                              aria-label={`Тег для ${target.nickname}`}
+                            >
+                              <option value="" disabled>
+                                Тег
+                              </option>
+                              {(['green', 'yellow', 'red'] as UserTagColor[]).map((color) => {
+                                const options = userTagsForAudience(audience).filter(
+                                  (tag) => tag.color === color,
+                                )
+                                if (options.length === 0) return null
+                                return (
+                                  <optgroup key={color} label={USER_TAG_COLOR_LABELS[color]}>
+                                    {options.map((tag) => (
+                                      <option key={tag.slug} value={tag.slug}>
+                                        {tag.label}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )
+                              })}
+                            </select>
                             <input
                               type="text"
-                              value={comments[g.userId] || ''}
-                              onChange={(e) => setComments((prev) => ({ ...prev, [g.userId]: e.target.value }))}
+                              value={comments[target.userId] || ''}
+                              onChange={(e) =>
+                                setComments((prev) => ({ ...prev, [target.userId]: e.target.value }))
+                              }
                               placeholder="Комментарий (необязательно)"
                               className="p-1 border rounded text-sm flex-1"
                               disabled={isSubmitting}
                             />
                             <button
-                              onClick={() => handleRate(g.userId)}
-                              disabled={isSubmitting || !scores[g.userId]}
+                              onClick={() => handleRate(target.userId)}
+                              disabled={
+                                isSubmitting ||
+                                !scores[target.userId] ||
+                                !selectedTags[target.userId]
+                              }
                               className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-60"
                             >
                               {isSubmitting ? 'Отправляем...' : 'Оценить'}

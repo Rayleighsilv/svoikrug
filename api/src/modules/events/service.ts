@@ -8,6 +8,11 @@ import {
 import { CreateEventInput, UpdateEventInput } from './schema'
 import { AppError } from '../../common/errors'
 import { chatExpiry, chatExpiryFromNow } from '../chats/service'
+import {
+  HOST_TAG_RATINGS_SELECT,
+  getReviewWindow,
+  serializeHostTags,
+} from '../ratings/tags'
 
 const VALID_EVENT_STATUSES: readonly EventStatus[] = ['draft', 'published', 'closed', 'archived'] as const
 
@@ -26,19 +31,31 @@ const TAGS_INCLUDE = {
   },
 } as const
 
-// Хост в списках: имя, аватар, рейтинг и количество отзывов.
+// Хост в списках: имя, аватар, рейтинг, количество отзывов и публичные теги.
 const HOST_PUBLIC_SELECT = {
   id: true,
   profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
   _count: { select: { ratingsReceived: true } },
+  ratingsReceived: HOST_TAG_RATINGS_SELECT,
 } as const
 
-type EventWithTags = { tags: { tag: { slug: string; label: string; category: string; sortOrder: number } }[] }
+type EventWithTags = {
+  tags: { tag: { slug: string; label: string; category: string; sortOrder: number } }[]
+  host?: {
+    ratingsReceived?: { tagSlug: string | null; raterId: string; createdAt: Date }[]
+    [key: string]: unknown
+  }
+}
 
 // event_tags → плоский массив тегов: клиенту не нужна структура join-таблицы.
+// Сырые выдачи тегов хоста заменяем на публичную агрегацию.
 function serializeEvent<T extends EventWithTags>(event: T) {
-  const { tags, ...rest } = event
-  return { ...rest, tags: tags.map((row) => row.tag) }
+  const { tags, host, ...rest } = event
+  return {
+    ...rest,
+    ...(host ? { host: serializeHostTags(host) } : {}),
+    tags: tags.map((row) => row.tag),
+  }
 }
 
 export class EventService {
@@ -119,6 +136,7 @@ export class EventService {
             email: true,
             profile: true,
             _count: { select: { ratingsReceived: true } },
+            ratingsReceived: HOST_TAG_RATINGS_SELECT,
           },
         },
         ...TAGS_INCLUDE,
@@ -145,9 +163,11 @@ export class EventService {
       canViewPrivateAddress = guest?.status === 'approved' || guest?.status === 'attended'
     }
 
-    const { addressPrivate, meetingLink, tags, ...publicEvent } = event
+    const { addressPrivate, meetingLink, tags, host, ...publicEvent } = event
+    const reviewWindow = getReviewWindow(event)
     return {
       ...publicEvent,
+      host: serializeHostTags(host),
       tags: tags.map((row) => row.tag),
       addressPrivate: canViewPrivateAddress ? addressPrivate : null,
       // Приватная ссылка на встречу доступна по тем же правилам, что и адрес.
@@ -155,6 +175,12 @@ export class EventService {
       canViewPrivateAddress,
       hasPrivateAddress: Boolean(addressPrivate),
       hasMeetingLink: Boolean(meetingLink),
+      // Окно отзывов считает сервер, клиент только отображает.
+      reviewWindow: {
+        opensAt: reviewWindow.opensAt,
+        closesAt: reviewWindow.closesAt,
+        isOpen: reviewWindow.isOpen,
+      },
     }
   }
 

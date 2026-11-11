@@ -12,6 +12,7 @@ import CityInput from '@/components/CityInput'
 import EventPassport from '@/components/EventPassport'
 import ProfileBadges from '@/components/ProfileBadges'
 import TrustScorePanel from '@/components/TrustScorePanel'
+import UserTagsSection from '@/components/UserTagsSection'
 import VerificationModal from '@/components/VerificationModal'
 import { calculateAge, formatAge, formatBirthDate } from '@/lib/age'
 
@@ -383,6 +384,8 @@ export default function ProfilePage() {
               )}
             </section>
           </div>
+
+          <UserTagsSection userId={user.id} isOwn />
           </>
           )}
         </div>

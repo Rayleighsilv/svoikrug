@@ -1,4 +1,5 @@
 import { PrismaClient, EventFormat, GuestStatus } from '@prisma/client'
+import { HOST_TAG_RATINGS_SELECT, serializeHostTags } from '../ratings/tags'
 
 export class FeedService {
   constructor(private prisma: PrismaClient) {}
@@ -35,6 +36,7 @@ export class FeedService {
             id: true,
             profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
             _count: { select: { ratingsReceived: true } },
+            ratingsReceived: HOST_TAG_RATINGS_SELECT,
           },
         },
         tags: {
@@ -59,8 +61,9 @@ export class FeedService {
       take: limit,
     })
 
-    return events.map(({ tags, ...event }) => ({
+    return events.map(({ tags, host, ...event }) => ({
       ...event,
+      host: serializeHostTags(host),
       tags: tags.map((row) => row.tag),
     }))
   }
