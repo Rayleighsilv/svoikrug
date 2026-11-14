@@ -257,6 +257,12 @@ const start = async () => {
       { preHandler: [server.authenticateOptional] },
       eventHandler.getById.bind(eventHandler),
     )
+    // Точный адрес — только через отдельный эндпоинт (хост и подтверждённые гости).
+    server.get<{ Params: { id: string } }>(
+      '/events/:id/address',
+      { preHandler: [server.authenticate] },
+      eventHandler.getAddress.bind(eventHandler),
+    )
     server.get('/events', eventHandler.list.bind(eventHandler))
     server.patch<{ Params: { id: string }; Body: any }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.update.bind(eventHandler))
     server.delete<{ Params: { id: string } }>('/events/:id', { preHandler: [server.authenticate] }, eventHandler.delete.bind(eventHandler))

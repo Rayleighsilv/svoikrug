@@ -36,7 +36,6 @@ type EventDetail = {
   subcategory?: string | null
   city?: string | null
   addressPublic?: string | null
-  addressPrivate?: string | null
   meetingLink?: string | null
   participantGeo?: 'any' | 'city'
   coverImageUrl?: string | null
@@ -100,8 +99,16 @@ export default function EditEventPage({ params }: { params: { id: string } }) {
         setTheme(ev.theme || '')
         setTags((ev.tags || []).map((tag) => tag.slug))
         setAddressPublic(ev.addressPublic || '')
-        setAddressPrivate(ev.addressPrivate || '')
         setMeetingLink(ev.meetingLink || '')
+        // Точный адрес приходит только через отдельный эндпоинт.
+        if (ev.canViewPrivateAddress) {
+          api
+            .get<{ success: boolean; addressPrivate: string }>(`/events/${id}/address`)
+            .then((addr) => {
+              if (!cancelled) setAddressPrivate(addr.addressPrivate)
+            })
+            .catch(() => {})
+        }
         setParticipantGeo(ev.participantGeo === 'city' ? 'city' : 'any')
         setStartsAt(isoToDatetimeLocal(ev.startsAt))
         setMaxGuests(ev.maxGuests != null ? String(ev.maxGuests) : '')

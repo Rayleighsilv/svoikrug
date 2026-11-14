@@ -153,6 +153,20 @@ export class EventService {
     })
     if (!event) return null
 
+    // Встреча прошла — автоматически закрываем запись. Без этого событие
+    // навсегда остаётся «Открыт для записи», а отзывы и теги недоступны.
+    const meetingEnd = event.endsAt
+      ? event.endsAt
+      : new Date(event.startsAt.getTime() + (event.durationMinutes ?? 0) * 60_000)
+    if (event.status === 'published' && meetingEnd.getTime() < Date.now()) {
+      await this.prisma.event.update({ where: { id }, data: { status: 'closed' } })
+      await this.prisma.chat.updateMany({
+        where: { eventId: id },
+        data: { expiresAt: chatExpiryFromNow() },
+      })
+      event.status = 'closed'
+    }
+
     // Точный адрес доступен хосту и гостям, чью заявку он подтвердил.
     let canViewPrivateAddress = viewerId === event.hostId
     if (viewerId && !canViewPrivateAddress) {
@@ -169,7 +183,8 @@ export class EventService {
       ...publicEvent,
       host: serializeHostTags(host),
       tags: tags.map((row) => row.tag),
-      addressPrivate: canViewPrivateAddress ? addressPrivate : null,
+      // Точный адрес отдаётся только через GET /events/:id/address —
+      // единая точка доступа с проверкой прав и аудит-логом.
       // Приватная ссылка на встречу доступна по тем же правилам, что и адрес.
       meetingLink: canViewPrivateAddress ? meetingLink : null,
       canViewPrivateAddress,
@@ -182,6 +197,34 @@ export class EventService {
         isOpen: reviewWindow.isOpen,
       },
     }
+  }
+
+  // Точный адрес события. Отдельный эндпоинт: хост и подтверждённые гости.
+  async getEventAddress(eventId: string, viewerId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { hostId: true, addressPrivate: true },
+    })
+    if (!event) {
+      throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND')
+    }
+
+    let allowed = event.hostId === viewerId
+    if (!allowed) {
+      const guest = await this.prisma.eventGuest.findUnique({
+        where: { eventId_userId: { eventId, userId: viewerId } },
+        select: { status: true },
+      })
+      allowed = guest?.status === 'approved' || guest?.status === 'attended'
+    }
+    if (!allowed) {
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED')
+    }
+    if (!event.addressPrivate) {
+      throw new AppError('Address not specified', 404, 'ADDRESS_NOT_FOUND')
+    }
+
+    return { addressPrivate: event.addressPrivate }
   }
 
   async listEvents(filters?: {

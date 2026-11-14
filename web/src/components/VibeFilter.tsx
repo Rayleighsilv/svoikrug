@@ -39,6 +39,7 @@ export default function VibeFilter({
   onChange: (tags: string[]) => void
 }) {
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   const normalizedQuery = query.trim().toLowerCase()
@@ -64,9 +65,24 @@ export default function VibeFilter({
   }
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 lg:sticky lg:top-6">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold text-gray-900">Вайб</span>
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-2 text-left"
+        >
+          <span className="text-base font-semibold text-gray-900">Вайб</span>
+          {value.length > 0 && (
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+              {value.length}
+            </span>
+          )}
+          <span className="ml-auto inline-flex">
+            <ChevronIcon open={open} />
+          </span>
+        </button>
         {value.length > 0 && (
           <button
             type="button"
@@ -78,6 +94,8 @@ export default function VibeFilter({
         )}
       </div>
 
+      {!open ? null : (
+        <>
       <input
         type="search"
         value={query}
@@ -175,6 +193,8 @@ export default function VibeFilter({
         >
           {allCollapsed ? 'Развернуть' : 'Свернуть'}
         </button>
+      )}
+        </>
       )}
     </div>
   )

@@ -56,12 +56,14 @@ export class RatingService {
       throw new AppError('Reviews are closed', 400, 'REVIEW_WINDOW_CLOSED')
     }
 
-    // 4) Оценивать может только гость, отмеченный как посетивший встречу.
-    const raterGuest = await this.prisma.eventGuest.findFirst({
-      where: { eventId, userId: raterId, status: 'attended' },
-    })
-    if (!raterGuest) {
-      throw new AppError('You did not attend this event', 403, 'NOT_A_GUEST')
+    // 4) Оценивать может гость, отмеченный как посетивший встречу, или сам хост.
+    if (raterId !== event.hostId) {
+      const raterGuest = await this.prisma.eventGuest.findFirst({
+        where: { eventId, userId: raterId, status: 'attended' },
+      })
+      if (!raterGuest) {
+        throw new AppError('You did not attend this event', 403, 'NOT_A_GUEST')
+      }
     }
 
     // 5) Оцениваемый — посетивший гость или хост события.

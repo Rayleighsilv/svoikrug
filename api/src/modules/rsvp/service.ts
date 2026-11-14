@@ -273,7 +273,19 @@ export class RsvpService {
       }
     }
 
-    return this.prisma.eventGuest.findMany({ where: { eventId } })
+    // Возвращаем тот же формат, что и listGuests: UI читает guest.user.profile.
+    return this.prisma.eventGuest.findMany({
+      where: { eventId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            profile: { select: { nickname: true, avatarUrl: true, trustScore: true } },
+          },
+        },
+      },
+      orderBy: { joinedAt: 'asc' },
+    })
   }
 
   // GET /users/me/rsvps — записи текущего пользователя (upcoming/past)

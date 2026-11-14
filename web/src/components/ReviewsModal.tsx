@@ -27,7 +27,7 @@ export function StarRow({ score, className = 'text-base' }: { score: number; cla
   )
 }
 
-function formatReviewDate(value: string) {
+export function formatReviewDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date

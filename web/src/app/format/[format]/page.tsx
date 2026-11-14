@@ -15,6 +15,10 @@ import { isTagAllowed, useTags } from '@/lib/tags'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
 import CategoryTile from '@/components/CategoryTile'
 import EventCard, { type EventCardEvent } from '@/components/EventCard'
+import EventFilters, {
+  EMPTY_EVENT_FILTERS,
+  type EventFiltersValue,
+} from '@/components/EventFilters'
 import EventListSkeleton from '@/components/EventListSkeleton'
 import Header from '@/components/Header'
 import OfflineFeed from '@/components/OfflineFeed'
@@ -41,6 +45,7 @@ export default function FormatPage({ params }: { params: { format: string } }) {
   const [subcategory, setSubcategory] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [localOnly, setLocalOnly] = useState(false)
+  const [filters, setFilters] = useState<EventFiltersValue>(EMPTY_EVENT_FILTERS)
 
   // При смене формата сбрасываем фильтры предыдущего экрана.
   // Географию читаем из URL: состояние чипа живёт в ?local=1.
@@ -111,6 +116,37 @@ export default function FormatPage({ params }: { params: { format: string } }) {
     setTags([])
   }
 
+  const resetAllFilters = () => {
+    resetFilters()
+    setFilters(EMPTY_EVENT_FILTERS)
+  }
+
+  // Фильтры даты, мест и числа гостей применяются к уже загруженному списку.
+  const matchesFilters = (event: EventItem): boolean => {
+    const startsAt = new Date(event.startsAt).getTime()
+    if (filters.dateFrom) {
+      const from = new Date(`${filters.dateFrom}T00:00:00`).getTime()
+      if (startsAt < from) return false
+    }
+    if (filters.dateTo) {
+      const to = new Date(`${filters.dateTo}T23:59:59.999`).getTime()
+      if (startsAt > to) return false
+    }
+    if (
+      filters.onlyAvailable &&
+      event.maxGuests != null &&
+      event._count.guests >= event.maxGuests
+    ) {
+      return false
+    }
+    const guests = event._count.guests
+    const min = filters.guestsMin === '' ? null : Number(filters.guestsMin)
+    if (min != null && Number.isFinite(min) && guests < min) return false
+    const max = filters.guestsMax === '' ? null : Number(filters.guestsMax)
+    if (max != null && Number.isFinite(max) && guests > max) return false
+    return true
+  }
+
   if (!formatMeta) {
     return (
       <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -142,6 +178,7 @@ export default function FormatPage({ params }: { params: { format: string } }) {
   const hasFilter = Boolean(subcategory || tags.length)
   // В фильтре показываем только вайбы, разрешённые в текущем формате.
   const formatTags = tagCatalog.filter((item) => isTagAllowed(item, formatMeta.slug))
+  const visibleEvents = events.filter(matchesFilters)
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -208,15 +245,14 @@ export default function FormatPage({ params }: { params: { format: string } }) {
           />
         </section>
 
-        {/* Слева — вайб-фильтр, справа — список встреч */}
-        <div
-          className={`grid items-start gap-6 ${
-            formatTags.length > 0 ? 'lg:grid-cols-[280px_minmax(0,1fr)]' : ''
-          }`}
-        >
-        {formatTags.length > 0 && (
-          <VibeFilter tags={formatTags} value={tags} onChange={setTags} />
-        )}
+        {/* Слева — фильтры, справа — список встреч */}
+        <div className="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            {formatTags.length > 0 && (
+              <VibeFilter tags={formatTags} value={tags} onChange={setTags} />
+            )}
+            <EventFilters value={filters} onChange={setFilters} />
+          </aside>
 
         <section aria-labelledby="format-events-title">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
@@ -225,7 +261,7 @@ export default function FormatPage({ params }: { params: { format: string } }) {
           </h2>
           {!loading && !error && (
             <span className="text-sm text-gray-500">
-              {events.length} {meetingsWord(events.length)}
+              {visibleEvents.length} {meetingsWord(visibleEvents.length)}
             </span>
           )}
         </div>
@@ -259,9 +295,20 @@ export default function FormatPage({ params }: { params: { format: string } }) {
               Создать событие
             </Link>
           </div>
+        ) : visibleEvents.length === 0 ? (
+          <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-gray-100">
+            <p className="text-lg text-gray-600">По выбранным фильтрам ничего не нашлось</p>
+            <button
+              type="button"
+              onClick={resetAllFilters}
+              className="mt-4 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              Сбросить фильтры
+            </button>
+          </div>
         ) : (
           <ul className="space-y-3">
-            {events.map((event) => (
+            {visibleEvents.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
           </ul>

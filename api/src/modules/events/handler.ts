@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { EventService } from './service'
+import { AppError } from '../../common/errors'
 import {
   createEventSchema,
   updateEventSchema,
@@ -52,6 +53,38 @@ export class EventHandler {
       return reply.code(404).send({ error: true, message: 'Event not found' })
     }
     return { success: true, event }
+  }
+
+  // GET /events/:id/address — точный адрес (хост или подтверждённый гость)
+  async getAddress(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsed = eventIdSchema.safeParse(request.params)
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: true,
+        message: 'Invalid event ID format',
+        details: parsed.error.issues,
+      })
+    }
+    const { id } = parsed.data
+    const userId = request.userId!
+
+    try {
+      const address = await this.service.getEventAddress(id, userId)
+      // Аудит: кто и когда получил точный адрес события.
+      request.log.info(
+        { eventId: id, userId, ip: request.ip },
+        'event private address accessed',
+      )
+      return { success: true, ...address }
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 403) {
+        request.log.warn(
+          { eventId: id, userId, ip: request.ip },
+          'event private address access denied',
+        )
+      }
+      throw error
+    }
   }
 
   // GET /events — список событий с фильтрами

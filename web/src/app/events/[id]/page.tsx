@@ -51,7 +51,6 @@ type EventDetail = {
   subcategory?: string | null
   city?: string | null
   addressPublic?: string | null
-  addressPrivate?: string | null
   coverImageUrl?: string | null
   tags?: { slug: string; label: string }[]
   canViewPrivateAddress?: boolean
@@ -222,6 +221,8 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [chatInput, setChatInput] = useState('')
   const [guestChecklist, setGuestChecklist] = useState<Record<string, boolean>>({})
   const [meetingLinkCopied, setMeetingLinkCopied] = useState(false)
+  // Точный адрес приходит отдельным запросом только для хоста/подтверждённых гостей.
+  const [privateAddress, setPrivateAddress] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -255,6 +256,14 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         setEvent(data.event)
         setSaved(isEventSaved(data.event.id))
         recordEventView(toStoredEvent(data.event))
+        if (data.event.canViewPrivateAddress) {
+          api
+            .get<{ success: boolean; addressPrivate: string }>(`/events/${id}/address`)
+            .then((addr) => {
+              if (!cancelled) setPrivateAddress(addr.addressPrivate)
+            })
+            .catch(() => {})
+        }
       })
       .catch(() => {
         if (!cancelled) setNotFound(true)
@@ -317,9 +326,22 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const myGuest = user ? guests.find((g) => g.userId === user.id) : null
   const iAttended = myGuest?.status === 'attended'
 
-  // Оценить можно хоста и посетивших гостей; для хоста — отдельный набор тегов.
+  // Конец встречи: по нему показываем «Завершено» и открываем отзывы.
+  const meetingEndTs = event
+    ? event.endsAt
+      ? new Date(event.endsAt).getTime()
+      : new Date(event.startsAt).getTime() + (event.durationMinutes ?? 0) * 60_000
+    : null
+  const meetingEnded = meetingEndTs != null && meetingEndTs < Date.now()
+  const canReview = isHost || iAttended
+  const statusBadge =
+    meetingEnded && (event?.status === 'published' || event?.status === 'closed')
+      ? { label: 'Завершено', className: 'bg-gray-200 text-gray-700' }
+      : STATUS_BADGE[event?.status || 'draft'] || STATUS_BADGE.draft
+
+  // Оценить можно хоста и посетивших гостей; хост оценивает только гостей.
   const rateTargets: RateTarget[] = []
-  if (event && iAttended) {
+  if (event && canReview) {
     if (event.host.id !== user?.id) {
       rateTargets.push({
         key: 'host',
@@ -362,7 +384,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     return () => clearInterval(timer)
   }, [id, myGuest?.status])
 
-  // Если заявку только что одобрили, добираем событие с точным адресом.
+  // Если заявку только что одобрили, добираем событие и точный адрес.
   useEffect(() => {
     if (
       !viewerId ||
@@ -374,7 +396,15 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     api
       .get<{ success: boolean; event: EventDetail }>(`/events/${id}`)
       .then((data) => {
-        if (!cancelled) setEvent(data.event)
+        if (cancelled) return
+        setEvent(data.event)
+        if (!data.event.canViewPrivateAddress) return
+        api
+          .get<{ success: boolean; addressPrivate: string }>(`/events/${id}/address`)
+          .then((addr) => {
+            if (!cancelled) setPrivateAddress(addr.addressPrivate)
+          })
+          .catch(() => {})
       })
       .catch(() => {})
     return () => {
@@ -703,7 +733,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     event.maxGuests != null
       ? Math.min(100, Math.round((event._count.guests / event.maxGuests) * 100))
       : 0
-  const privateLocation = [event.addressPrivate, event.city].filter(Boolean).join(', ')
+  const privateLocation = [privateAddress, event.city].filter(Boolean).join(', ')
   const eventEndsAt =
     event.endsAt ??
     new Date(new Date(event.startsAt).getTime() + 2 * 60 * 60 * 1000).toISOString()
@@ -745,11 +775,9 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <h1 className="text-2xl font-bold">{event.title}</h1>
             <span
-              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                (STATUS_BADGE[event.status] || STATUS_BADGE.draft).className
-              }`}
+              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadge.className}`}
             >
-              {(STATUS_BADGE[event.status] || STATUS_BADGE.draft).label}
+              {statusBadge.label}
             </span>
             <div className="ml-auto flex items-center gap-2">
               <button
@@ -840,16 +868,16 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
             {event.addressPublic && (
               <p className="text-gray-700">📍 {event.addressPublic}</p>
             )}
-            {event.canViewPrivateAddress && event.addressPrivate ? (
+            {event.canViewPrivateAddress && privateAddress ? (
               <p className="mt-2 text-gray-900">
-                <span className="font-medium">Точное место:</span> {event.addressPrivate}
+                <span className="font-medium">Точное место:</span> {privateAddress}
               </p>
             ) : event.hasPrivateAddress ? (
               <p className="mt-2 text-sm text-gray-500">
                 🔒 Точный адрес видят только организатор и подтверждённые участники.
               </p>
             ) : null}
-            {event.canViewPrivateAddress && event.addressPrivate && (
+            {event.canViewPrivateAddress && privateAddress && (
               <div className="mt-3 flex flex-wrap gap-2">
                 <a
                   href={calendarUrl}
@@ -1148,7 +1176,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           </div>
         )}
 
-        {(event.status === 'closed' || event.status === 'archived') && iAttended && (
+        {(event.status === 'closed' || event.status === 'archived') && canReview && (
           <div className="mt-6 p-6 bg-white rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-1">Оценить участников</h2>
             <p className="mb-3 text-xs text-gray-500">

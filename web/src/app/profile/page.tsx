@@ -14,6 +14,9 @@ import ProfileBadges from '@/components/ProfileBadges'
 import TrustScorePanel from '@/components/TrustScorePanel'
 import UserTagsSection from '@/components/UserTagsSection'
 import VerificationModal from '@/components/VerificationModal'
+import UserTagChip from '@/components/UserTagChip'
+import { StarRow, formatReviewDate, type ReviewItem } from '@/components/ReviewsModal'
+import { reviewsWord } from '@/lib/reviews'
 import { calculateAge, formatAge, formatBirthDate } from '@/lib/age'
 
 export default function ProfilePage() {
@@ -32,6 +35,9 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState('')
   const [copiedEmail, setCopiedEmail] = useState(false)
   const [verificationOpen, setVerificationOpen] = useState(false)
+  const [reviews, setReviews] = useState<ReviewItem[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(true)
+  const [reviewsError, setReviewsError] = useState('')
 
   const closeVerification = useCallback(() => setVerificationOpen(false), [])
 
@@ -48,6 +54,29 @@ export default function ProfilePage() {
     const timer = setTimeout(() => setCopiedEmail(false), 2000)
     return () => clearTimeout(timer)
   }, [copiedEmail])
+
+  // Отзывы, которые другие участники оставили обо мне (анонимно).
+  useEffect(() => {
+    if (!user?.id) return
+    const profileUserId = user.id
+    let cancelled = false
+    setReviewsLoading(true)
+    setReviewsError('')
+    api
+      .get<{ success: boolean; ratings: ReviewItem[] }>(`/users/${profileUserId}/ratings`)
+      .then((data) => {
+        if (!cancelled) setReviews(data.ratings || [])
+      })
+      .catch(() => {
+        if (!cancelled) setReviewsError('Не удалось загрузить отзывы')
+      })
+      .finally(() => {
+        if (!cancelled) setReviewsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   const handleCopyEmail = async () => {
     if (!user || !navigator.clipboard) return
@@ -159,6 +188,10 @@ export default function ProfilePage() {
   const todayISO = new Date().toISOString().slice(0, 10)
   const age = calculateAge(user.profile?.birthDate)
   const birthDateLabel = formatBirthDate(user.profile?.birthDate)
+  const reviewsTotal = reviews.length
+  const reviewsAverage = reviewsTotal
+    ? Math.round((reviews.reduce((sum, review) => sum + review.score, 0) / reviewsTotal) * 10) / 10
+    : 0
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -389,6 +422,63 @@ export default function ProfilePage() {
           </>
           )}
         </div>
+
+        {/* Отзывы обо мне */}
+        <section
+          aria-labelledby="profile-reviews-title"
+          className="mt-6 rounded-lg bg-white p-6 shadow"
+        >
+          <h2 id="profile-reviews-title" className="mb-4 text-lg font-semibold">
+            Отзывы обо мне
+          </h2>
+
+          {reviewsLoading ? (
+            <p className="text-sm text-gray-500">Загрузка...</p>
+          ) : reviewsError ? (
+            <p className="text-sm text-red-600">{reviewsError}</p>
+          ) : reviewsTotal === 0 ? (
+            <p className="text-sm text-gray-500">
+              Пока нет отзывов. Оценки появляются после проведённых сборов.
+            </p>
+          ) : (
+            <>
+              <div className="mb-4 flex items-center gap-3">
+                <p className="text-3xl font-bold leading-none text-gray-900">
+                  {reviewsAverage.toFixed(1).replace('.', ',')}
+                </p>
+                <div>
+                  <StarRow score={Math.round(reviewsAverage)} className="text-base" />
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {reviewsTotal} {reviewsWord(reviewsTotal)}
+                  </p>
+                </div>
+              </div>
+
+              <ul className="divide-y divide-gray-100">
+                {reviews.map((review) => (
+                  <li key={review.id} className="py-4">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <StarRow score={review.score} className="text-sm" />
+                      {review.tag && <UserTagChip tag={review.tag} compact />}
+                      <span className="text-xs text-gray-500">
+                        {formatReviewDate(review.createdAt)} · {review.event.title}
+                      </span>
+                    </div>
+                    {review.comment && (
+                      <p className="mt-1.5 whitespace-pre-line text-sm text-gray-800">
+                        {review.comment}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              <p className="mt-3 text-xs text-gray-500">
+                Все отзывы анонимны: вы не видите, кто их оставил.
+              </p>
+            </>
+          )}
+        </section>
 
         {/* Заглушки V1: бейджи и паспорт квартирника */}
         <div className="mt-6 space-y-4">
