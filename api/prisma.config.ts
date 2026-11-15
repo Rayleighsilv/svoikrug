@@ -5,6 +5,10 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 export default defineConfig({
+  migrations: {
+    // `npx prisma db seed` запускает этот же скрипт.
+    seed: 'tsx prisma/seed.ts',
+  },
   datasources: {
     db: {
       // 🔹 Это обязательно для prisma migrate dev

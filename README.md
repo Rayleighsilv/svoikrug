@@ -6,6 +6,31 @@
 - `api/` — бэкенд (Fastify + Prisma + PostgreSQL)
 - `docker-compose.yml` — сервисы `db` / `backend` / `frontend`
 
+## Статус
+
+Активная разработка. Реализованы: регистрация и вход (httpOnly JWT-cookies),
+профили и аватары, события (создание, приватный адрес, фильтры по формату
+и вайбу, онлайн-встречи), RSVP и лист ожидания, подписки на хостов, отзывы
+и теги, чаты событий, избранное, уведомления. Тестов нет; CI проверяет
+lint, typecheck и сборку web.
+
+## Быстрый старт
+
+Полная инструкция — [SETUP.md](SETUP.md) (первый запуск на новой машине
+и ежедневная работа на двух ПК). Кратко:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose exec backend npx prisma migrate deploy
+docker compose exec backend npx prisma generate
+docker compose exec backend npx prisma db seed
+```
+
+Web — <http://localhost:3000>, API — <http://localhost:4000>, health —
+<http://localhost:4000/health>. Демо-логин: `seed.user1@example.com` /
+`Password123`.
+
 ## Миграции базы данных (Prisma)
 
 Схема БД описана в `api/prisma/schema.prisma`.

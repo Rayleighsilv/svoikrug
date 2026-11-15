@@ -2,6 +2,20 @@
 
 Социальная сеть для камерных встреч и квартирников: события, RSVP, подписки на хостов, оценки, in-app уведомления.
 
+## Быстрый старт
+
+Полная инструкция — [SETUP.md](SETUP.md): первый запуск на новой машине и ежедневная работа на двух ПК.
+Статус: активная разработка (auth, события/RSVP, профили, отзывы и теги, чаты, подписки, уведомления); тестов нет.
+
+```bash
+docker compose up -d --build
+docker compose exec backend npx prisma migrate deploy
+docker compose exec backend npx prisma generate
+docker compose exec backend npx prisma db seed
+```
+
+Демо-логин: `seed.user1@example.com` / `Password123`. Web — `:3000`, API — `:4000`.
+
 ## Стек
 
 - `api/` — Fastify 5.8, Prisma 6.19 + `@prisma/adapter-pg`, PostgreSQL 16, Zod 4, TypeScript 6 (CommonJS, `tsc` → `dist/`).
